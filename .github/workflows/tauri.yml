@@ -65,3 +65,5 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseDraft: true
           prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
