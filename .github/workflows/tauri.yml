@@ -63,6 +63,7 @@ jobs:
           tauriScript: npm run tauri --
           args: ""
           tagName: ${{ github.ref_name }}
+          releaseName: ${{ github.ref_name }}
           releaseDraft: true
           prerelease: false
         env:
