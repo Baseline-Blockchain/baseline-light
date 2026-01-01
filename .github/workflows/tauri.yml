@@ -45,5 +45,5 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         with:
           projectPath: .
-          tauriScript: npm run tauri:build
-          args: ""
+          tauriScript: npm run tauri --
+          args: build
