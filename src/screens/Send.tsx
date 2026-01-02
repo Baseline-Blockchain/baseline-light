@@ -1,9 +1,19 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useSettings } from "../state/settings";
 import { useWallet } from "../state/wallet";
 import { buildAndSignTx, type SpendableUtxo } from "../lib/tx";
 import { fromLiners, toLiners } from "../lib/wallet";
+
+const MIN_RELAY_FEE_RATE_LINERS_PER_KB = 5_000;
+type FeeMode = "auto" | "custom";
+
+const FEE_PRESETS = [
+  { key: "eco", label: "Eco", multiplier: 0.85, hint: "Cheaper · may wait longer" },
+  { key: "standard", label: "Standard", multiplier: 1, hint: "Balanced" },
+  { key: "fast", label: "Fast", multiplier: 1.3, hint: "Prioritizes confirmation" },
+  { key: "turbo", label: "Turbo", multiplier: 1.6, hint: "Top of mempool" },
+] as const;
 
 type PendingSend = {
   build: {
@@ -15,6 +25,11 @@ type PendingSend = {
   toAddress: string;
   feeRateLinersPerKb: number;
   feeTarget: number;
+  feeMode: FeeMode;
+  feePriorityLabel: string;
+  feeMultiplier: number;
+  baseFeeRateLinersPerKb: number | null;
+  customFeeRatePerVb?: number;
 };
 
 type LastSend = {
@@ -24,6 +39,11 @@ type LastSend = {
   vsize: number;
   feeRateLinersPerKb: number;
   feeTarget: number;
+  feeMode: FeeMode;
+  feePriorityLabel: string;
+  feeMultiplier: number;
+  baseFeeRateLinersPerKb: number | null;
+  customFeeRatePerVb?: number;
 };
 
 type AddressStats = {
@@ -46,6 +66,10 @@ export function SendScreen() {
   const [feeRate, setFeeRate] = useState<number | null>(null);
   const [feeLoading, setFeeLoading] = useState(false);
   const [feeNote, setFeeNote] = useState<string | null>(null);
+  const [feeMode, setFeeMode] = useState<FeeMode>("auto");
+  const [feePresetKey, setFeePresetKey] = useState<(typeof FEE_PRESETS)[number]["key"]>("fast");
+  const [customFeeRate, setCustomFeeRate] = useState("");
+  const [building, setBuilding] = useState(false);
   const [pendingSend, setPendingSend] = useState<PendingSend | null>(null);
   const [sending, setSending] = useState(false);
   const [lastSend, setLastSend] = useState<LastSend | null>(null);
@@ -58,6 +82,53 @@ export function SendScreen() {
   const resetPending = () => {
     setPendingSend(null);
   };
+
+  const fallbackFeeRate = 5_000; // liners/kB fallback if estimatesmartfee is unavailable
+
+  const selectedPreset = useMemo(
+    () => FEE_PRESETS.find((p) => p.key === feePresetKey) ?? FEE_PRESETS[0],
+    [feePresetKey],
+  );
+
+  const parsedCustomRateLinersPerKb = useMemo(() => {
+    const numeric = Number(customFeeRate);
+    if (!Number.isFinite(numeric) || numeric <= 0) return null;
+    return Math.round(numeric * 1000); // input is liners/vB, convert to per-kB
+  }, [customFeeRate]);
+
+  const baseEstimatedFeeRate = useMemo(
+    () => (typeof feeRate === "number" && Number.isFinite(feeRate) ? feeRate : null),
+    [feeRate],
+  );
+
+  const computeEffectiveRate = useCallback(
+    (baseRate: number | null) => {
+      let candidate: number | null = null;
+      if (feeMode === "custom") {
+        candidate = parsedCustomRateLinersPerKb;
+      } else {
+        const base = baseRate ?? fallbackFeeRate;
+        candidate = Math.max(1, Math.round(base * selectedPreset.multiplier));
+      }
+      if (!candidate) {
+        return { rate: null as number | null, clamped: false };
+      }
+      const finalRate = Math.max(MIN_RELAY_FEE_RATE_LINERS_PER_KB, candidate);
+      return { rate: finalRate, clamped: finalRate !== candidate };
+    },
+    [feeMode, parsedCustomRateLinersPerKb, selectedPreset.multiplier],
+  );
+
+  const { rate: previewFeeRate, clamped: previewClamped } = useMemo(
+    () => computeEffectiveRate(baseEstimatedFeeRate),
+    [computeEffectiveRate, baseEstimatedFeeRate],
+  );
+
+  const previewFeeRatePerVb = previewFeeRate ? previewFeeRate / 1000 : null;
+  const baseRateText =
+    baseEstimatedFeeRate !== null
+      ? `${(baseEstimatedFeeRate / 1000).toFixed(2)} liners/vB · target ~${feeTarget} blocks`
+      : `Using fallback ${(fallbackFeeRate / 1000).toFixed(2)} liners/vB (estimatesmartfee unavailable)`;
 
   useEffect(() => {
     async function fetchFee() {
@@ -142,6 +213,7 @@ export function SendScreen() {
     setErrorDetail(null);
     setLastSend(null);
     setPendingSend(null);
+    setBuilding(false);
     if (!keyRing) {
       setError("Unlock wallet first");
       return;
@@ -162,6 +234,8 @@ export function SendScreen() {
         return;
       }
     }
+    setBuilding(true);
+    setStatus("Preparing review...");
     try {
       // refresh fee just before send
       let liveRate = feeRate;
@@ -193,12 +267,19 @@ export function SendScreen() {
           value: u.liners,
           scriptPubKey: u.script,
           address: u.address,
-        }));
+      }));
       if (!spendable.length) {
         setError("No spendable UTXOs for your addresses");
+        setBuilding(false);
         return;
       }
-      const rate = typeof liveRate === "number" && Number.isFinite(liveRate) ? liveRate : 5_000;
+      const baseRate = typeof liveRate === "number" && Number.isFinite(liveRate) ? liveRate : null;
+      const { rate, clamped } = computeEffectiveRate(baseRate);
+      if (!rate) {
+        setError("Enter a custom fee rate in liners/vB");
+        setBuilding(false);
+        return;
+      }
       const build = buildAndSignTx(
         {
           utxos: spendable,
@@ -219,6 +300,11 @@ export function SendScreen() {
         toAddress: dest.trim(),
         feeRateLinersPerKb: rate,
         feeTarget,
+        feeMode,
+        feePriorityLabel: selectedPreset.label,
+        feeMultiplier: selectedPreset.multiplier,
+        baseFeeRateLinersPerKb: baseRate,
+        customFeeRatePerVb: feeMode === "custom" && parsedCustomRateLinersPerKb ? parsedCustomRateLinersPerKb / 1000 : undefined,
       });
       setStatus("Review the details below");
     } catch (err) {
@@ -226,6 +312,8 @@ export function SendScreen() {
       const detail = err instanceof Error && "code" in err ? `(${(err as any).code})` : "";
       setError(message);
       setErrorDetail(detail || null);
+    } finally {
+      setBuilding(false);
     }
   };
 
@@ -244,6 +332,11 @@ export function SendScreen() {
         vsize: pendingSend.build.vsize,
         feeRateLinersPerKb: pendingSend.feeRateLinersPerKb,
         feeTarget: pendingSend.feeTarget,
+        feeMode: pendingSend.feeMode,
+        feePriorityLabel: pendingSend.feePriorityLabel,
+        feeMultiplier: pendingSend.feeMultiplier,
+        baseFeeRateLinersPerKb: pendingSend.baseFeeRateLinersPerKb,
+        customFeeRatePerVb: pendingSend.customFeeRatePerVb,
       });
       setStatus("Sent");
       setPendingSend(null);
@@ -344,19 +437,88 @@ export function SendScreen() {
             }}
           />
         </div>
-        <div>
-          <label>Fee rate (auto)</label>
-          <div className={`chip fee-chip${feeLoading ? " skeleton skeleton-chip" : ""}`}>
-            {!feeLoading &&
-              (feeRate
-                ? `${(feeRate / 100_000_000).toFixed(6)} BLINE/kB · target ~${feeTarget} blocks`
-                : "Using fallback rate")}
+        <div className="span-2">
+          <label>Fee & priority</label>
+          <div className="fee-box">
+            <div className="fee-row">
+              <div className={`chip fee-chip${feeLoading ? " skeleton skeleton-chip" : ""}`}>
+                {!feeLoading && baseRateText}
+              </div>
+              <div className="fee-mode-toggle">
+                <button
+                  type="button"
+                  className={`fee-mode-btn${feeMode === "auto" ? " active" : ""}`}
+                  onClick={() => {
+                    setFeeMode("auto");
+                    setStatus(null);
+                    resetPending();
+                  }}
+                >
+                  Boosted auto
+                </button>
+                <button
+                  type="button"
+                  className={`fee-mode-btn${feeMode === "custom" ? " active" : ""}`}
+                  onClick={() => {
+                    setFeeMode("custom");
+                    setStatus(null);
+                    resetPending();
+                  }}
+                >
+                  Custom (liners/vB)
+                </button>
+              </div>
+            </div>
+            {feeMode === "auto" ? (
+              <div className="fee-preset-grid">
+                {FEE_PRESETS.map((preset) => (
+                  <button
+                    type="button"
+                    key={preset.key}
+                    className={`fee-preset${feePresetKey === preset.key ? " active" : ""}`}
+                    onClick={() => {
+                      setFeePresetKey(preset.key);
+                      resetPending();
+                    }}
+                  >
+                    <div className="fee-preset-title">
+                      {preset.label}{" "}
+                      <span className="fee-preset-multiplier">
+                        ×{preset.multiplier.toFixed(2).replace(/\.?0+$/, "")}
+                      </span>
+                    </div>
+                    <div className="fee-preset-hint">{preset.hint}</div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="fee-custom">
+                <input
+                  inputMode="decimal"
+                  placeholder="e.g. 25 (liners/vB, like sats/vB)"
+                  value={customFeeRate}
+                  onChange={(e) => {
+                    setCustomFeeRate(e.target.value);
+                    resetPending();
+                  }}
+                />
+                <div className="fee-note">
+                  We interpret this as liners/vB. {previewFeeRate ? `≈ ${(previewFeeRate / 100_000_000).toFixed(6)} BLINE/kB` : "Enter a number to preview."}
+                </div>
+              </div>
+            )}
+            {previewFeeRatePerVb !== null && previewFeeRate !== null && (
+              <div className="fee-note">
+                Effective rate: {previewFeeRatePerVb.toFixed(2)} liners/vB · {(previewFeeRate / 100_000_000).toFixed(6)} BLINE/kB
+              </div>
+            )}
+            {previewClamped && <div className="fee-note">Raised to minimum relay fee</div>}
+            {feeNote && <div className="fee-note">{feeNote}</div>}
           </div>
-          {feeNote && <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 6 }}>{feeNote}</div>}
         </div>
         <div className="span-2 send-actions">
-          <button className="btn btn-primary" type="submit">
-            {pendingSend ? "Update send" : "Send"}
+          <button className="btn btn-primary" type="submit" disabled={building}>
+            {building ? "Preparing..." : pendingSend ? "Update review" : "Review & send"}
           </button>
           {status && <span className="send-status">{status}</span>}
         </div>
@@ -384,7 +546,21 @@ export function SendScreen() {
                 <div className="send-review-value">
                   {(pendingSend.feeRateLinersPerKb / 100_000_000).toFixed(6)} BLINE/kB
                 </div>
-                <div className="send-review-note">target ~{pendingSend.feeTarget} blocks</div>
+                <div className="send-review-note">
+                  {pendingSend.feeMode === "custom" ? (
+                    <>Manual {pendingSend.customFeeRatePerVb?.toFixed(2) ?? (pendingSend.feeRateLinersPerKb / 1000).toFixed(2)} liners/vB</>
+                  ) : (
+                    <>
+                      {pendingSend.feePriorityLabel} · target ~{pendingSend.feeTarget} blocks · boost ×
+                      {pendingSend.feeMultiplier.toFixed(2).replace(/\.?0+$/, "")}
+                    </>
+                  )}
+                </div>
+                {pendingSend.baseFeeRateLinersPerKb !== null && pendingSend.feeMode === "auto" && (
+                  <div className="send-review-note">
+                    Base est: {(pendingSend.baseFeeRateLinersPerKb / 1000).toFixed(2)} liners/vB
+                  </div>
+                )}
               </div>
             </div>
             <div className="send-review-actions">
@@ -414,7 +590,13 @@ export function SendScreen() {
                 <div className="send-summary-value">
                   {(lastSend.feeRateLinersPerKb / 100_000_000).toFixed(6)} BLINE/kB
                 </div>
-                <div className="send-summary-note">target ~{lastSend.feeTarget} blocks</div>
+                <div className="send-summary-note">
+                  {lastSend.feeMode === "custom"
+                    ? `Manual ${lastSend.customFeeRatePerVb?.toFixed(2) ?? (lastSend.feeRateLinersPerKb / 1000).toFixed(2)} liners/vB`
+                    : `${lastSend.feePriorityLabel} · target ~${lastSend.feeTarget} blocks · boost ×${lastSend.feeMultiplier
+                        .toFixed(2)
+                        .replace(/\.?0+$/, "")}`}
+                </div>
               </div>
               <div className="send-summary-txid">
                 <div className="send-summary-label">Transaction id</div>

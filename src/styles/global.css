@@ -285,6 +285,99 @@ button {
   font-weight: 600;
 }
 
+.fee-box {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+  background: var(--panel-strong);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.fee-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.fee-mode-toggle {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fee-mode-btn {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.fee-mode-btn.active {
+  background: var(--accent-fade);
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+.fee-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.fee-preset {
+  text-align: left;
+  padding: var(--space-3);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.fee-preset:hover {
+  border-color: var(--accent);
+}
+
+.fee-preset.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-fade);
+  background: rgba(71, 194, 255, 0.06);
+}
+
+.fee-preset-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.fee-preset-multiplier {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.fee-preset-hint {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.fee-custom input {
+  width: 100%;
+}
+
+.fee-note {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .send-review {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
