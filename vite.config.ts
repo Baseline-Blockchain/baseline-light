@@ -7,6 +7,8 @@ import { nodePolyfills } from "vite-plugin-node-polyfills";
 
 export default defineConfig(({ command }) => {
   const isServe = command === "serve";
+  const isTauriDev = Boolean(process.env.TAURI_ENV_PLATFORM || process.env.TAURI_PLATFORM);
+  const useBrowserShim = isServe && !isTauriDev;
   return {
     plugins: [
       react(),
@@ -16,7 +18,7 @@ export default defineConfig(({ command }) => {
         protocolImports: true,
       }),
     ],
-    resolve: isServe
+    resolve: useBrowserShim
       ? {
           alias: {
             "@tauri-apps/plugin-http": path.resolve(__dirname, "src/lib/tauri-http-shim.ts"),
