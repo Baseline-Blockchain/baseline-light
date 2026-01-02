@@ -12,6 +12,7 @@ export function SettingsScreen() {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [backupInfo, setBackupInfo] = useState<string | null>(null);
+  const [confirmForget, setConfirmForget] = useState(false);
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -74,10 +75,8 @@ export function SettingsScreen() {
   };
 
   const onClear = () => {
-    const confirmed = window.confirm("Forget wallet? This removes keys from this device. Make sure you saved your seed/backup.");
-    if (confirmed) {
-      clear();
-    }
+    clear();
+    setConfirmForget(false);
   };
 
   return (
@@ -125,10 +124,28 @@ export function SettingsScreen() {
           {backupInfo && <span className="chip">{backupInfo}</span>}
         </div>
         <div className="settings-actions">
-          <button className="btn btn-danger" type="button" onClick={onClear}>
-            Forget wallet
-          </button>
+          {!confirmForget && (
+            <button className="btn btn-danger" type="button" onClick={() => setConfirmForget(true)}>
+              Forget wallet
+            </button>
+          )}
         </div>
+        {confirmForget && (
+          <div className="confirm-panel">
+            <div>
+              <div className="confirm-title">Forget wallet from this device?</div>
+              <div className="confirm-note">This removes keys locally. Make sure you have your seed or backup first.</div>
+            </div>
+            <div className="confirm-actions">
+              <button className="btn btn-danger" type="button" onClick={onClear}>
+                Confirm forget
+              </button>
+              <button className="btn btn-ghost" type="button" onClick={() => setConfirmForget(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

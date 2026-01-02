@@ -103,7 +103,13 @@ export function HomeScreen() {
   return (
     <div className="grid-2">
       <div className="card">
-        {balance.loading && <p>Loading...</p>}
+        {balance.loading && (
+          <div className="balance-hero">
+            <div className="skeleton skeleton-line" style={{ width: "45%" }} />
+            <div className="skeleton skeleton-block" style={{ width: "65%", height: 30 }} />
+            <div className="skeleton skeleton-line" style={{ width: "25%" }} />
+          </div>
+        )}
         {balance.error && <p style={{ color: "var(--danger)" }}>{balance.error}</p>}
         {balance.data && (
           <div className="balance-hero">

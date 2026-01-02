@@ -9,6 +9,7 @@ export function LockScreen() {
   const [passphrase, setPassphrase] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirmForget, setConfirmForget] = useState(false);
 
   // If no wallet is stored, send to create/import instead of showing unlock UI.
   useEffect(() => {
@@ -18,10 +19,8 @@ export function LockScreen() {
   }, [status, hasWallet, navigate]);
 
   const onForget = () => {
-    const confirmed = window.confirm("Forget wallet from this device? Make sure you have your seed/backup first.");
-    if (confirmed) {
-      clear();
-    }
+    clear();
+    setConfirmForget(false);
   };
 
   const onSubmit = async (e: FormEvent) => {
@@ -65,12 +64,28 @@ export function LockScreen() {
             <button className="btn btn-primary" type="submit" disabled={busy}>
               {busy ? "Unlocking..." : "Unlock"}
             </button>
-            {hasWallet && (
-              <button type="button" className="btn btn-danger" onClick={onForget}>
+            {hasWallet && !confirmForget && (
+              <button type="button" className="btn btn-danger" onClick={() => setConfirmForget(true)}>
                 Forget wallet
               </button>
             )}
           </div>
+          {confirmForget && (
+            <div className="confirm-panel">
+              <div>
+                <div className="confirm-title">Forget wallet from this device?</div>
+                <div className="confirm-note">This removes keys locally. Make sure you have your seed or backup first.</div>
+              </div>
+              <div className="confirm-actions">
+                <button type="button" className="btn btn-danger" onClick={onForget}>
+                  Confirm forget
+                </button>
+                <button type="button" className="btn btn-ghost" onClick={() => setConfirmForget(false)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </form>
       </div>
     </div>

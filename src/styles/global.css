@@ -191,6 +191,71 @@ button {
   gap: var(--space-4);
 }
 
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent);
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+.skeleton-line {
+  height: 12px;
+  border-radius: 6px;
+}
+
+.skeleton-block {
+  height: 20px;
+  border-radius: 10px;
+}
+
+.skeleton-chip {
+  height: 28px;
+  min-width: 180px;
+  border-radius: 999px;
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.confirm-panel {
+  border: 1px solid rgba(255, 107, 107, 0.35);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+  background: rgba(255, 107, 107, 0.08);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.confirm-title {
+  font-weight: 700;
+}
+
+.confirm-note {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 6px;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
 .send-form {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }

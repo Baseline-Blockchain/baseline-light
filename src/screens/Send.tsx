@@ -26,6 +26,11 @@ type LastSend = {
   feeTarget: number;
 };
 
+type AddressStats = {
+  utxoCount: number;
+  totalLiners: number;
+};
+
 export function SendScreen() {
   const { client, feeTarget } = useSettings();
   const { keys, keyRing } = useWallet();
@@ -44,6 +49,9 @@ export function SendScreen() {
   const [pendingSend, setPendingSend] = useState<PendingSend | null>(null);
   const [sending, setSending] = useState(false);
   const [lastSend, setLastSend] = useState<LastSend | null>(null);
+  const [addressStats, setAddressStats] = useState<Record<string, AddressStats>>({});
+  const [addressStatsLoading, setAddressStatsLoading] = useState(false);
+  const [addressStatsError, setAddressStatsError] = useState<string | null>(null);
 
   const addresses = useMemo(() => keys.map((k) => k.address), [keys]);
 
@@ -80,6 +88,53 @@ export function SendScreen() {
     fetchFee();
   }, [client, feeTarget]);
 
+  useEffect(() => {
+    let active = true;
+    async function fetchAddressStats() {
+      if (!addresses.length) {
+        setAddressStats({});
+        setAddressStatsError(null);
+        setAddressStatsLoading(false);
+        return;
+      }
+      setAddressStatsLoading(true);
+      setAddressStatsError(null);
+      try {
+        const utxos = await client.getAddressUtxos(addresses);
+        if (!active) return;
+        const stats: Record<string, AddressStats> = {};
+        addresses.forEach((addr) => {
+          stats[addr] = { utxoCount: 0, totalLiners: 0 };
+        });
+        utxos.forEach((u) => {
+          if (!stats[u.address]) return;
+          stats[u.address].utxoCount += 1;
+          stats[u.address].totalLiners += u.liners;
+        });
+        setAddressStats(stats);
+      } catch (err) {
+        if (!active) return;
+        const message = err instanceof Error ? err.message : String(err);
+        setAddressStatsError(message);
+        setAddressStats({});
+      } finally {
+        if (active) setAddressStatsLoading(false);
+      }
+    }
+    fetchAddressStats();
+    return () => {
+      active = false;
+    };
+  }, [addresses, client]);
+
+  useEffect(() => {
+    if (!fromAddress) return;
+    const stats = addressStats[fromAddress];
+    if (stats && stats.utxoCount === 0) {
+      setFromAddress("");
+    }
+  }, [addressStats, fromAddress]);
+
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setStatus(null);
@@ -99,6 +154,13 @@ export function SendScreen() {
     if (!amountNum || amountNum <= 0) {
       setError("Enter a valid amount");
       return;
+    }
+    if (fromAddress) {
+      const stats = addressStats[fromAddress];
+      if (!stats || stats.utxoCount === 0) {
+        setError("Selected address has no spendable UTXOs");
+        return;
+      }
     }
     try {
       // refresh fee just before send
@@ -230,11 +292,20 @@ export function SendScreen() {
           >
             <option value="">Use any wallet address</option>
             {keys.map((k) => (
-              <option key={k.address} value={k.address}>
+              <option
+                key={k.address}
+                value={k.address}
+                disabled={addressStats[k.address]?.utxoCount === 0}
+              >
                 {k.address}
+                {addressStats[k.address] && ` · ${fromLiners(addressStats[k.address].totalLiners).toFixed(8)} BLINE`}
               </option>
             ))}
           </select>
+          {addressStatsLoading && <div className="skeleton skeleton-line" style={{ width: "60%", marginTop: 6 }} />}
+          {addressStatsError && (
+            <div style={{ color: "var(--warning)", fontSize: 12, marginTop: 6 }}>Balance lookup failed: {addressStatsError}</div>
+          )}
         </div>
         <div>
           <label htmlFor="change">Return/change address</label>
@@ -275,12 +346,11 @@ export function SendScreen() {
         </div>
         <div>
           <label>Fee rate (auto)</label>
-          <div className="chip fee-chip">
-            {feeLoading
-              ? "Estimating..."
-              : feeRate
+          <div className={`chip fee-chip${feeLoading ? " skeleton skeleton-chip" : ""}`}>
+            {!feeLoading &&
+              (feeRate
                 ? `${(feeRate / 100_000_000).toFixed(6)} BLINE/kB · target ~${feeTarget} blocks`
-                : "Using fallback rate"}
+                : "Using fallback rate")}
           </div>
           {feeNote && <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 6 }}>{feeNote}</div>}
         </div>
