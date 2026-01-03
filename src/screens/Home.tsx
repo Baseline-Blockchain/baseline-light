@@ -144,21 +144,33 @@ export function HomeScreen() {
       </div>
       <div className="card" style={{ gridColumn: "1 / -1" }}>
         <h3>Recent activity</h3>
-        {txIds.length === 0 && <p>No recent transactions for these addresses.</p>}
-        <div className="grid-2">
-          {txIds.map((tx: any, idx) => (
-            <div key={idx} className="address-chip">
-              <div className="label">Height {tx.height ?? "mempool"}</div>
-              <button
-                type="button"
-                onClick={() => openExplorer(tx.txid ?? tx)}
-                style={{ color: "var(--accent)", background: "transparent", border: "none", padding: 0, textAlign: "left", cursor: "pointer" }}
-              >
-                {tx.txid ?? tx}
-              </button>
-            </div>
-          ))}
-        </div>
+        {balance.loading && (
+          <div className="grid-2">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="address-chip">
+                <div className="skeleton skeleton-line" style={{ width: "40%" }} />
+                <div className="skeleton skeleton-line" style={{ width: "85%", marginTop: 8 }} />
+              </div>
+            ))}
+          </div>
+        )}
+        {!balance.loading && txIds.length === 0 && <p>No recent transactions for these addresses.</p>}
+        {!balance.loading && txIds.length > 0 && (
+          <div className="grid-2">
+            {txIds.map((tx: any, idx) => (
+              <div key={idx} className="address-chip">
+                <div className="label">Height {tx.height ?? "mempool"}</div>
+                <button
+                  type="button"
+                  onClick={() => openExplorer(tx.txid ?? tx)}
+                  style={{ color: "var(--accent)", background: "transparent", border: "none", padding: 0, textAlign: "left", cursor: "pointer" }}
+                >
+                  {tx.txid ?? tx}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -2,7 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useSettings } from "../state/settings";
 import { useWallet } from "../state/wallet";
-import { buildAndSignTx, type SpendableUtxo } from "../lib/tx";
+import { buildAndSignTx, selectUtxos, type SpendableUtxo } from "../lib/tx";
 import { fromLiners, toLiners } from "../lib/wallet";
 
 const MIN_RELAY_FEE_RATE_LINERS_PER_KB = 5_000;
@@ -51,6 +51,8 @@ type AddressStats = {
   maturedLiners: number;
 };
 
+const EXPLORER_TX = "https://explorer.baseline.cash/tx/";
+
 export function SendScreen() {
   const { client, feeTarget } = useSettings();
   const { keys, keyRing } = useWallet();
@@ -73,14 +75,15 @@ export function SendScreen() {
   const [pendingSend, setPendingSend] = useState<PendingSend | null>(null);
   const [sending, setSending] = useState(false);
   const [lastSend, setLastSend] = useState<LastSend | null>(null);
+  const [pendingMempool, setPendingMempool] = useState<{ txid: string; confirmations: number } | null>(null);
+  const [showPendingBanner, setShowPendingBanner] = useState(false);
   const [addressStats, setAddressStats] = useState<Record<string, AddressStats>>({});
   const [addressStatsLoading, setAddressStatsLoading] = useState(false);
   const [addressStatsError, setAddressStatsError] = useState<string | null>(null);
-
   const addresses = useMemo(() => keys.map((k) => k.address), [keys]);
 
-  const pageUtxos = useCallback(
-    async (addrList: string[]) => {
+  const collectUtxosForSpend = useCallback(
+    async (addrList: string[], amountLiners: number, feeRateLinersPerKb: number) => {
       const pageSize = 500;
       let offset = 0;
       let all: SpendableUtxo[] = [];
@@ -95,10 +98,18 @@ export function SendScreen() {
             address: u.address,
           })),
         );
-        if (batch.length < pageSize) break;
-        offset += pageSize;
+        try {
+          selectUtxos(all, amountLiners, feeRateLinersPerKb);
+          return all;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "";
+          if (msg.includes("Insufficient funds for amount") && batch.length === pageSize) {
+            offset += pageSize;
+            continue;
+          }
+          throw err;
+        }
       }
-      return all;
     },
     [client],
   );
@@ -147,6 +158,15 @@ export function SendScreen() {
     () => computeEffectiveRate(baseEstimatedFeeRate),
     [computeEffectiveRate, baseEstimatedFeeRate],
   );
+
+  const scrollMainToTop = () => {
+    const el = document.querySelector<HTMLElement>(".shell-main");
+    if (el && typeof el.scrollTo === "function") {
+      el.scrollTo({ top: 0, behavior: "smooth" });
+    } else if (typeof window !== "undefined" && typeof window.scrollTo === "function") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
 
   const previewFeeRatePerVb = previewFeeRate ? previewFeeRate / 1000 : null;
   const baseRateText =
@@ -255,7 +275,7 @@ export function SendScreen() {
     }
     if (fromAddress) {
       const stats = addressStats[fromAddress];
-      if (!stats || stats.utxoCount === 0) {
+      if (!stats || (stats.maturedLiners ?? 0) <= 0) {
         setError("Selected address has no spendable UTXOs");
         return;
       }
@@ -283,14 +303,6 @@ export function SendScreen() {
         // keep previous or fallback
       }
 
-      const queryAddresses = fromAddress ? [fromAddress] : addresses;
-      const utxos = await pageUtxos(queryAddresses);
-      const spendable: SpendableUtxo[] = utxos.filter((u) => keyRing[u.address]);
-      if (!spendable.length) {
-        setError("No spendable UTXOs for your addresses");
-        setBuilding(false);
-        return;
-      }
       const baseRate = typeof liveRate === "number" && Number.isFinite(liveRate) ? liveRate : null;
       const { rate, clamped } = computeEffectiveRate(baseRate);
       if (!rate) {
@@ -298,11 +310,20 @@ export function SendScreen() {
         setBuilding(false);
         return;
       }
+      const queryAddresses = fromAddress ? [fromAddress] : addresses;
+      const amountLiners = toLiners(amountNum);
+      const utxos = await collectUtxosForSpend(queryAddresses, amountLiners, rate);
+      const spendable: SpendableUtxo[] = utxos.filter((u) => keyRing[u.address]);
+      if (!spendable.length) {
+        setError("No spendable UTXOs for your addresses");
+        setBuilding(false);
+        return;
+      }
       const build = buildAndSignTx(
         {
           utxos: spendable,
           toAddress: dest.trim(),
-          amount: toLiners(amountNum),
+          amount: amountLiners,
           changeAddress: changeAddress || defaultChange,
           feeRateLinersPerKb: rate,
         },
@@ -356,6 +377,9 @@ export function SendScreen() {
         baseFeeRateLinersPerKb: pendingSend.baseFeeRateLinersPerKb,
         customFeeRatePerVb: pendingSend.customFeeRatePerVb,
       });
+      setPendingMempool({ txid: txidResult, confirmations: 0 });
+      setShowPendingBanner(true);
+      scrollMainToTop();
       setStatus("Sent");
       setPendingSend(null);
     } catch (err) {
@@ -373,9 +397,78 @@ export function SendScreen() {
     setStatus("Send cancelled");
   };
 
+  useEffect(() => {
+    // No-op when not pending; only poll after a send in this session.
+  }, [lastSend, pendingMempool]);
+
+  useEffect(() => {
+    if (!pendingMempool) return;
+    let stop = false;
+    const interval = setInterval(async () => {
+      if (stop) return;
+      try {
+        const tx = await client.getRawTransaction(pendingMempool.txid, true);
+        const conf = typeof tx.confirmations === "number" ? tx.confirmations : 0;
+        if (conf > 0) {
+          setPendingMempool(null);
+          setShowPendingBanner(false);
+        } else {
+          setPendingMempool({ txid: pendingMempool.txid, confirmations: conf });
+        }
+      } catch {
+        // If the tx is missing (not in mempool or chain), drop the banner.
+        setPendingMempool(null);
+        setShowPendingBanner(false);
+      }
+    }, 10_000);
+    return () => {
+      stop = true;
+      clearInterval(interval);
+    };
+  }, [client, lastSend, pendingMempool]);
+
   return (
     <div className="card">
-      <h3>Send</h3>
+      <h3 style={{ marginBottom: pendingMempool && showPendingBanner ? 8 : 16 }}>Send</h3>
+      {pendingMempool && showPendingBanner && (
+        <div
+          style={{
+            marginBottom: 14,
+            padding: "10px 12px",
+            borderRadius: 8,
+            border: "1px solid var(--accent-muted, #2f7fff33)",
+            background: "var(--surface-1)",
+            boxShadow: "0 6px 20px rgba(0,0,0,0.25)",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+            <div style={{ fontWeight: 600, color: "var(--text)" }}>Successfully sent transaction</div>
+            <button
+              type="button"
+              onClick={() => setShowPendingBanner(false)}
+              style={{
+                border: "none",
+                background: "transparent",
+                color: "var(--muted)",
+                cursor: "pointer",
+                fontSize: 12,
+                padding: "4px 6px",
+              }}
+              aria-label="Dismiss pending notice"
+            >
+              Dismiss
+            </button>
+          </div>
+          <div style={{ color: "var(--muted)", marginTop: 4, fontSize: 13 }}>
+            Transaction was broadcasted and will be included in a block soon.
+          </div>
+          {lastSend && (
+            <div style={{ color: "var(--muted-strong)", marginTop: 6, fontSize: 12 }}>
+              Transaction Hash: <code>{`${lastSend.txid}`}</code>
+            </div>
+          )}
+        </div>
+      )}
       <form onSubmit={onSubmit} className="grid-2 send-form">
         <div className="span-2">
           <label htmlFor="dest">Destination address</label>
@@ -592,7 +685,7 @@ export function SendScreen() {
             </div>
           </div>
         )}
-        {lastSend && !pendingSend && (
+        {lastSend && !pendingSend && !pendingMempool && (
           <div className="span-2 send-summary">
             <div className="send-summary-header">
               <div className="send-summary-title">Last sent transaction</div>
