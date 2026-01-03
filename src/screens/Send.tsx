@@ -47,8 +47,8 @@ type LastSend = {
 };
 
 type AddressStats = {
-  utxoCount: number;
   totalLiners: number;
+  maturedLiners: number;
 };
 
 export function SendScreen() {
@@ -78,6 +78,30 @@ export function SendScreen() {
   const [addressStatsError, setAddressStatsError] = useState<string | null>(null);
 
   const addresses = useMemo(() => keys.map((k) => k.address), [keys]);
+
+  const pageUtxos = useCallback(
+    async (addrList: string[]) => {
+      const pageSize = 500;
+      let offset = 0;
+      let all: SpendableUtxo[] = [];
+      while (true) {
+        const batch = await client.getAddressUtxos(addrList, pageSize, offset);
+        all = all.concat(
+          batch.map((u) => ({
+            txid: u.txid,
+            vout: u.outputIndex,
+            value: u.liners,
+            scriptPubKey: u.script,
+            address: u.address,
+          })),
+        );
+        if (batch.length < pageSize) break;
+        offset += pageSize;
+      }
+      return all;
+    },
+    [client],
+  );
 
   const resetPending = () => {
     setPendingSend(null);
@@ -171,16 +195,18 @@ export function SendScreen() {
       setAddressStatsLoading(true);
       setAddressStatsError(null);
       try {
-        const utxos = await client.getAddressUtxos(addresses);
+        const results = await Promise.all(
+          addresses.map(async (addr) => {
+            const bal = await client.getAddressBalance([addr]);
+            const matured = bal.matured_liners ?? bal.balance_liners ?? 0;
+            const total = bal.balance_liners ?? 0;
+            return { addr, matured, total };
+          }),
+        );
         if (!active) return;
         const stats: Record<string, AddressStats> = {};
-        addresses.forEach((addr) => {
-          stats[addr] = { utxoCount: 0, totalLiners: 0 };
-        });
-        utxos.forEach((u) => {
-          if (!stats[u.address]) return;
-          stats[u.address].utxoCount += 1;
-          stats[u.address].totalLiners += u.liners;
+        results.forEach(({ addr, matured, total }) => {
+          stats[addr] = { maturedLiners: matured, totalLiners: total };
         });
         setAddressStats(stats);
       } catch (err) {
@@ -201,7 +227,7 @@ export function SendScreen() {
   useEffect(() => {
     if (!fromAddress) return;
     const stats = addressStats[fromAddress];
-    if (stats && stats.utxoCount === 0) {
+    if (stats && stats.maturedLiners <= 0) {
       setFromAddress("");
     }
   }, [addressStats, fromAddress]);
@@ -258,16 +284,8 @@ export function SendScreen() {
       }
 
       const queryAddresses = fromAddress ? [fromAddress] : addresses;
-      const utxos = await client.getAddressUtxos(queryAddresses);
-      const spendable: SpendableUtxo[] = utxos
-        .filter((u) => keyRing[u.address])
-        .map((u) => ({
-          txid: u.txid,
-          vout: u.outputIndex,
-          value: u.liners,
-          scriptPubKey: u.script,
-          address: u.address,
-      }));
+      const utxos = await pageUtxos(queryAddresses);
+      const spendable: SpendableUtxo[] = utxos.filter((u) => keyRing[u.address]);
       if (!spendable.length) {
         setError("No spendable UTXOs for your addresses");
         setBuilding(false);
@@ -388,10 +406,11 @@ export function SendScreen() {
               <option
                 key={k.address}
                 value={k.address}
-                disabled={addressStats[k.address]?.utxoCount === 0}
+                disabled={(addressStats[k.address]?.maturedLiners ?? 0) <= 0}
               >
                 {k.address}
-                {addressStats[k.address] && ` · ${fromLiners(addressStats[k.address].totalLiners).toFixed(8)} BLINE`}
+                {addressStats[k.address] &&
+                  ` · ${fromLiners(addressStats[k.address].maturedLiners ?? 0).toFixed(8)} BLINE`}
               </option>
             ))}
           </select>

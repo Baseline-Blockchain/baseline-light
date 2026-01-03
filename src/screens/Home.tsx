@@ -83,7 +83,14 @@ export function HomeScreen() {
     };
   }, [load, checkHeight]);
 
+  const maturedLiners =
+    balance.data?.matured_liners ?? (typeof balance.data?.balance_liners === "number" ? balance.data.balance_liners : 0);
+  const immatureLiners =
+    balance.data?.immature_liners ??
+    Math.max(0, (typeof balance.data?.balance_liners === "number" ? balance.data.balance_liners : 0) - maturedLiners);
   const total = balance.data ? fromLiners(balance.data.balance_liners) : 0;
+  const matured = fromLiners(maturedLiners);
+  const immature = fromLiners(immatureLiners);
 
   const openExplorer = useCallback(async (txid: string) => {
     const url = `${EXPLORER_TX}${txid}`;
@@ -107,15 +114,19 @@ export function HomeScreen() {
           <div className="balance-hero">
             <div className="skeleton skeleton-line" style={{ width: "45%" }} />
             <div className="skeleton skeleton-block" style={{ width: "65%", height: 30 }} />
-            <div className="skeleton skeleton-line" style={{ width: "25%" }} />
+            <div className="skeleton skeleton-line" style={{ width: "55%" }} />
           </div>
         )}
         {balance.error && <p style={{ color: "var(--danger)" }}>{balance.error}</p>}
         {balance.data && (
           <div className="balance-hero">
-            <div className="balance-label">Total balance</div>
-            <div className="balance-value">{total.toFixed(8)}</div>
+            <div className="balance-label">Spendable balance</div>
+            <div className="balance-value">{matured.toFixed(8)}</div>
             <div className="balance-unit">BLINE</div>
+            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 6, lineHeight: 1.4 }}>
+              <div>Immature: {immature.toFixed(8)} BLINE</div>
+              <div>Total: {total.toFixed(8)} BLINE</div>
+            </div>
           </div>
         )}
       </div>

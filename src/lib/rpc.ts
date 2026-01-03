@@ -19,6 +19,10 @@ export type AddressBalance = {
   received_liners: number;
   balance: number;
   received: number;
+  matured_liners?: number;
+  immature_liners?: number;
+  matured?: number;
+  immature?: number;
 };
 
 export type FeeEstimate = {
@@ -141,12 +145,18 @@ export class RpcClient {
     return this.call("getaddressbalance", [{ addresses }]);
   }
 
-  getAddressUtxos(addresses: string[]): Promise<AddressUtxo[]> {
-    return this.call("getaddressutxos", [{ addresses }]);
+  getAddressUtxos(addresses: string[], limit?: number, offset?: number): Promise<AddressUtxo[]> {
+    const params: any = { addresses };
+    if (limit !== undefined) params.limit = limit;
+    if (offset !== undefined) params.offset = offset;
+    return this.call("getaddressutxos", [params]);
   }
 
-  getAddressTxids(addresses: string[], includeHeight = true): Promise<any[]> {
-    return this.call("getaddresstxids", [{ addresses, include_height: includeHeight }]);
+  getAddressTxids(addresses: string[], includeHeight = true, limit?: number, offset?: number): Promise<any[]> {
+    const params: any = { addresses, include_height: includeHeight };
+    if (limit !== undefined) params.limit = limit;
+    if (offset !== undefined) params.offset = offset;
+    return this.call("getaddresstxids", [params]);
   }
 
   getRawTransaction(txid: string, verbose = true, blockHash?: string): Promise<any> {
