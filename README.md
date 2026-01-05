@@ -15,6 +15,17 @@ npm run dev         # hot reload (web)
 npm run build       # production bundle
 npm run tauri:dev   # native shell (spawns Vite + Tauri)
 npm run tauri:build # native binaries for your OS (requires Rust toolchain)
+
+# Mobile (Android/iOS)
+# Android prerequisites: JDK 17+, Android SDK/NDK + cmdline tools on PATH (`sdkmanager`), ANDROID_HOME/ANDROID_SDK_ROOT set.
+# iOS prerequisites: Xcode toolchain + CocoaPods (run on macOS).
+# Once toolchains are present:
+#   npm run tauri:android:init  # scaffold android project (once)
+#   npm run tauri:android:dev   # device/emulator dev
+#   npm run tauri:android:build # release build
+#   npm run tauri:ios:init      # scaffold iOS project (once, macOS)
+#   npm run tauri:ios:dev       # simulator/dev
+#   npm run tauri:ios:build     # release build
 ```
 
 ## Screens
