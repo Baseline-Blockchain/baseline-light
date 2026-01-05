@@ -39,38 +39,38 @@ export function ImportWalletScreen() {
   };
 
   return (
-    <div className="shell-main" style={{ maxWidth: 920, margin: "60px auto" }}>
-      <div className="card" style={{ padding: 32, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
-        <div>
-          <div className="chip">Bring your wallet</div>
-          <h2 style={{ margin: "10px 0 6px" }}>Import existing keys</h2>
-          <p style={{ color: "var(--muted)" }}>
-            Supports mnemonic, WIF, or Baseline <code>wallet.json</code>. Everything is encrypted locally with the
+    <div className="auth-page">
+      <div className="auth-card">
+        <div className="auth-hero">
+          <span className="pill">Bring your wallet</span>
+          <h2>Import existing keys</h2>
+          <p>
+            Supports mnemonic, WIF, or Baseline wallet.json. Everything stays on this device and is encrypted with the
             passphrase you choose below.
           </p>
-          <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-            <button className={`btn ${mode === "mnemonic" ? "btn-primary" : "btn-ghost"}`} type="button" onClick={() => setMode("mnemonic")}>
-              Mnemonic
-            </button>
-            <button className={`btn ${mode === "wif" ? "btn-primary" : "btn-ghost"}`} type="button" onClick={() => setMode("wif")}>
-              WIF key
-            </button>
-            <button className={`btn ${mode === "walletjson" ? "btn-primary" : "btn-ghost"}`} type="button" onClick={() => setMode("walletjson")}>
-              wallet.json
-            </button>
-            <Link to="/create" className="btn btn-ghost">
-              New wallet
-            </Link>
-          </div>
-          <ul style={{ marginTop: 12, color: "var(--muted)" }}>
+          <ul className="auth-list">
             <li>Never paste secrets into untrusted devices.</li>
             <li>Passphrase here encrypts the wallet on this device only.</li>
             <li>Seeds/keys are not sent to the node.</li>
           </ul>
         </div>
-        <div>
-          <form onSubmit={onSubmit} className="grid-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
-            <div style={{ gridColumn: "1 / -1" }}>
+        <div className="auth-panel">
+          <div className="auth-tabs">
+            <button className={`auth-tab ${mode === "mnemonic" ? "active" : ""}`} type="button" onClick={() => setMode("mnemonic")}>
+              Mnemonic
+            </button>
+            <button className={`auth-tab ${mode === "wif" ? "active" : ""}`} type="button" onClick={() => setMode("wif")}>
+              WIF key
+            </button>
+            <button className={`auth-tab ${mode === "walletjson" ? "active" : ""}`} type="button" onClick={() => setMode("walletjson")}>
+              wallet.json
+            </button>
+            <Link to="/create" className="auth-tab" style={{ textDecoration: "none", textAlign: "center" }}>
+              New wallet
+            </Link>
+          </div>
+          <form onSubmit={onSubmit} className="auth-form">
+            <div className="full">
               <label htmlFor="secret">
                 {mode === "mnemonic" ? "12-word mnemonic" : mode === "wif" ? "WIF private key" : "wallet.json contents"}
               </label>
@@ -89,7 +89,7 @@ export function ImportWalletScreen() {
                 onChange={(e) => setSecret(e.target.value)}
               />
             </div>
-            <div style={{ gridColumn: "1 / -1" }}>
+            <div className="full">
               <label htmlFor="passphrase">Passphrase</label>
               <input
                 id="passphrase"
@@ -100,7 +100,7 @@ export function ImportWalletScreen() {
                 onChange={(e) => setPassphrase(e.target.value)}
               />
             </div>
-            <div style={{ gridColumn: "1 / -1" }}>
+            <div className="full">
               <label htmlFor="confirm">Confirm</label>
               <input
                 id="confirm"
@@ -111,8 +111,12 @@ export function ImportWalletScreen() {
                 onChange={(e) => setConfirm(e.target.value)}
               />
             </div>
-            {error && <div style={{ gridColumn: "1 / -1", color: "var(--danger)" }}>{error}</div>}
-            <div style={{ display: "flex", gap: 12, alignItems: "center", gridColumn: "1 / -1", flexWrap: "wrap" }}>
+            {error && (
+              <div className="full" style={{ color: "var(--danger)", fontWeight: 600 }}>
+                {error}
+              </div>
+            )}
+            <div className="auth-actions full">
               <button className="btn btn-primary" type="submit" disabled={busy}>
                 {busy ? "Importing..." : "Import"}
               </button>

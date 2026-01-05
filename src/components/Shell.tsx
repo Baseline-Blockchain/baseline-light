@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { House, PaperPlaneTilt, GearSix } from "phosphor-react";
+import { GearSix, House, LockSimple, PaperPlaneTilt } from "phosphor-react";
 
 import { useWallet } from "../state/wallet";
 
@@ -44,6 +44,24 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
       <main className="shell-main">{children}</main>
+      <nav className="bottom-nav" aria-label="Primary navigation">
+        <NavLink to="/" end className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>
+          <House size={20} weight="duotone" />
+          <span>Home</span>
+        </NavLink>
+        <NavLink to="/send" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>
+          <PaperPlaneTilt size={20} weight="duotone" />
+          <span>Send</span>
+        </NavLink>
+        <NavLink to="/settings" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>
+          <GearSix size={20} weight="duotone" />
+          <span>Settings</span>
+        </NavLink>
+        <button type="button" className="bottom-nav-action" onClick={lock}>
+          <LockSimple size={20} weight="duotone" />
+          <span>Lock</span>
+        </button>
+      </nav>
     </div>
   );
 }

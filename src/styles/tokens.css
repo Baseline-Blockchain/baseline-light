@@ -29,4 +29,6 @@
 
   --shadow: 0 14px 45px rgba(0, 0, 0, 0.35);
   --outline: 1px solid var(--border);
+
+  --bottom-nav-height: 76px;
 }

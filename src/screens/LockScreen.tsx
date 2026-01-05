@@ -39,37 +39,48 @@ export function LockScreen() {
   };
 
   return (
-    <div className="shell-main" style={{ maxWidth: 720, margin: "60px auto" }}>
-      <div className="card" style={{ padding: 32 }}>
-        <div style={{ marginBottom: 16 }}>
-          <div className="chip">Baseline Light</div>
-          <h2 style={{ margin: "8px 0 4px" }}>Welcome back</h2>
-          <p style={{ color: "var(--muted)" }}>Unlock with your passphrase. Keys never leave this device.</p>
+    <div className="auth-page">
+      <div className="auth-card">
+        <div className="auth-hero">
+          <span className="pill">Baseline Light</span>
+          <h2>Welcome back</h2>
+          <p>Unlock with your passphrase. Keys never leave this device.</p>
+          <ul className="auth-list">
+            <li>Keep your passphrase private; it decrypts the wallet locally.</li>
+            <li>Use “Forget wallet” only if you have the seed backed up.</li>
+            <li>Need to start over? Create or import from Settings later.</li>
+          </ul>
         </div>
-        <form onSubmit={onSubmit} className="grid-2" style={{ gridTemplateColumns: "1fr" }}>
-          <div>
-            <label htmlFor="passphrase">Passphrase</label>
-            <input
-              id="passphrase"
-              type="password"
-              autoFocus
-              required
-              placeholder="Enter the passphrase you encrypted with"
-              value={passphrase}
-              onChange={(e) => setPassphrase(e.target.value)}
-            />
-          </div>
-          {error && <div style={{ color: "var(--danger)" }}>{error}</div>}
-          <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
-            <button className="btn btn-primary" type="submit" disabled={busy}>
-              {busy ? "Unlocking..." : "Unlock"}
-            </button>
-            {hasWallet && !confirmForget && (
-              <button type="button" className="btn btn-danger" onClick={() => setConfirmForget(true)}>
-                Forget wallet
-              </button>
+        <div className="auth-panel">
+          <form onSubmit={onSubmit} className="auth-form">
+            <div className="full">
+              <label htmlFor="passphrase">Passphrase</label>
+              <input
+                id="passphrase"
+                type="password"
+                autoFocus
+                required
+                placeholder="Enter the passphrase you encrypted with"
+                value={passphrase}
+                onChange={(e) => setPassphrase(e.target.value)}
+              />
+            </div>
+            {error && (
+              <div className="full" style={{ color: "var(--danger)", fontWeight: 600 }}>
+                {error}
+              </div>
             )}
-          </div>
+            <div className="auth-actions full">
+              <button className="btn btn-primary" type="submit" disabled={busy}>
+                {busy ? "Unlocking..." : "Unlock"}
+              </button>
+              {hasWallet && !confirmForget && (
+                <button type="button" className="btn btn-danger" onClick={() => setConfirmForget(true)}>
+                  Forget wallet
+                </button>
+              )}
+            </div>
+          </form>
           {confirmForget && (
             <div className="confirm-panel">
               <div>
@@ -86,7 +97,7 @@ export function LockScreen() {
               </div>
             </div>
           )}
-        </form>
+        </div>
       </div>
     </div>
   );
