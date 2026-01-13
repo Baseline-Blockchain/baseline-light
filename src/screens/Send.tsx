@@ -1,18 +1,25 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
+import { ArrowRight, Info, RocketLaunch, Warning, X } from "phosphor-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 import { useSettings } from "../state/settings";
 import { useWallet } from "../state/wallet";
 import { buildAndSignTx, selectUtxos, type SpendableUtxo } from "../lib/tx";
 import { fromLiners, toLiners } from "../lib/wallet";
+import { Card } from "../components/ui/Card";
+import { Button } from "../components/ui/Button";
+import { Input } from "../components/ui/Input";
+import { Select, type SelectOption } from "../components/ui/Select";
+import { cn } from "../lib/utils";
 
 const MIN_RELAY_FEE_RATE_LINERS_PER_KB = 5_000;
 type FeeMode = "auto" | "custom";
 
 const FEE_PRESETS = [
-  { key: "eco", label: "Eco", multiplier: 0.85, hint: "Cheaper · may wait longer" },
   { key: "standard", label: "Standard", multiplier: 1, hint: "Balanced" },
-  { key: "fast", label: "Fast", multiplier: 1.3, hint: "Prioritizes confirmation" },
-  { key: "turbo", label: "Turbo", multiplier: 1.6, hint: "Top of mempool" },
+  { key: "fast", label: "Fast", multiplier: 1.3, hint: "Priority" },
+  { key: "turbo", label: "Turbo", multiplier: 1.6, hint: "Top block" },
 ] as const;
 
 type PendingSend = {
@@ -69,7 +76,7 @@ export function SendScreen() {
   const [feeLoading, setFeeLoading] = useState(false);
   const [feeNote, setFeeNote] = useState<string | null>(null);
   const [feeMode, setFeeMode] = useState<FeeMode>("auto");
-  const [feePresetKey, setFeePresetKey] = useState<(typeof FEE_PRESETS)[number]["key"]>("fast");
+  const [feePresetKey, setFeePresetKey] = useState<(typeof FEE_PRESETS)[number]["key"]>("standard");
   const [customFeeRate, setCustomFeeRate] = useState("");
   const [building, setBuilding] = useState(false);
   const [pendingSend, setPendingSend] = useState<PendingSend | null>(null);
@@ -118,7 +125,7 @@ export function SendScreen() {
     setPendingSend(null);
   };
 
-  const fallbackFeeRate = 5_000; // liners/kB fallback if estimatesmartfee is unavailable
+  const fallbackFeeRate = 5_000;
 
   const selectedPreset = useMemo(
     () => FEE_PRESETS.find((p) => p.key === feePresetKey) ?? FEE_PRESETS[0],
@@ -128,7 +135,7 @@ export function SendScreen() {
   const parsedCustomRateLinersPerKb = useMemo(() => {
     const numeric = Number(customFeeRate);
     if (!Number.isFinite(numeric) || numeric <= 0) return null;
-    return Math.round(numeric * 1000); // input is liners/vB, convert to per-kB
+    return Math.round(numeric * 1000);
   }, [customFeeRate]);
 
   const baseEstimatedFeeRate = useMemo(
@@ -171,8 +178,8 @@ export function SendScreen() {
   const previewFeeRatePerVb = previewFeeRate ? previewFeeRate / 1000 : null;
   const baseRateText =
     baseEstimatedFeeRate !== null
-      ? `${(baseEstimatedFeeRate / 1000).toFixed(2)} liners/vB · target ~${feeTarget} blocks`
-      : `Using fallback ${(fallbackFeeRate / 1000).toFixed(2)} liners/vB (estimatesmartfee unavailable)`;
+      ? `${(baseEstimatedFeeRate / 1000).toFixed(2)} liners/vB`
+      : `${(fallbackFeeRate / 1000).toFixed(2)} liners/vB (fallback)`;
 
   useEffect(() => {
     async function fetchFee() {
@@ -283,7 +290,7 @@ export function SendScreen() {
     setBuilding(true);
     setStatus("Preparing review...");
     try {
-      // refresh fee just before send
+      // ... (existing fee refresh logic)
       let liveRate = feeRate;
       try {
         const est = await client.estimateSmartFee(feeTarget);
@@ -291,17 +298,7 @@ export function SendScreen() {
           liveRate = est.feerate * 100_000_000;
           setFeeRate(liveRate);
         }
-        const errors = Array.isArray(est?.errors) ? est.errors.filter(Boolean) : [];
-        if (errors.length > 0) {
-          setFeeNote(`estimatesmartfee: ${errors.join(" ")}`);
-        } else if (!est || typeof est.feerate !== "number") {
-          setFeeNote("estimatesmartfee: no feerate returned; using fallback");
-        } else {
-          setFeeNote(null);
-        }
-      } catch {
-        // keep previous or fallback
-      }
+      } catch { }
 
       const baseRate = typeof liveRate === "number" && Number.isFinite(liveRate) ? liveRate : null;
       const { rate, clamped } = computeEffectiveRate(baseRate);
@@ -345,7 +342,7 @@ export function SendScreen() {
         baseFeeRateLinersPerKb: baseRate,
         customFeeRatePerVb: feeMode === "custom" && parsedCustomRateLinersPerKb ? parsedCustomRateLinersPerKb / 1000 : undefined,
       });
-      setStatus("Review the details below");
+      setStatus("Review details below");
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       const detail = err instanceof Error && "code" in err ? `(${(err as any).code})` : "";
@@ -398,10 +395,6 @@ export function SendScreen() {
   };
 
   useEffect(() => {
-    // No-op when not pending; only poll after a send in this session.
-  }, [lastSend, pendingMempool]);
-
-  useEffect(() => {
     if (!pendingMempool) return;
     let stop = false;
     const interval = setInterval(async () => {
@@ -410,15 +403,14 @@ export function SendScreen() {
         const tx = await client.getRawTransaction(pendingMempool.txid, true);
         const conf = typeof tx.confirmations === "number" ? tx.confirmations : 0;
         if (conf > 0) {
-          setPendingMempool(null);
-          setShowPendingBanner(false);
+          setPendingMempool({ txid: pendingMempool.txid, confirmations: conf });
+          // Don't auto-close, let user dismiss
         } else {
           setPendingMempool({ txid: pendingMempool.txid, confirmations: conf });
         }
       } catch {
-        // If the tx is missing (not in mempool or chain), drop the banner.
-        setPendingMempool(null);
-        setShowPendingBanner(false);
+        // Ignore errors (e.g. tx not indexed yet), keep trying
+        // Don't auto-close
       }
     }, 10_000);
     return () => {
@@ -428,301 +420,257 @@ export function SendScreen() {
   }, [client, lastSend, pendingMempool]);
 
   return (
-    <div className="card">
-      <h3 style={{ marginBottom: pendingMempool && showPendingBanner ? 8 : 16 }}>Send</h3>
-      {pendingMempool && showPendingBanner && (
-        <div
-          style={{
-            marginBottom: 14,
-            padding: "10px 12px",
-            borderRadius: 8,
-            border: "1px solid var(--accent-muted, #2f7fff33)",
-            background: "var(--surface-1)",
-            boxShadow: "0 6px 20px rgba(0,0,0,0.25)",
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-            <div style={{ fontWeight: 600, color: "var(--text)" }}>Successfully sent transaction</div>
-            <button
-              type="button"
-              onClick={() => setShowPendingBanner(false)}
-              style={{
-                border: "none",
-                background: "transparent",
-                color: "var(--muted)",
-                cursor: "pointer",
-                fontSize: 12,
-                padding: "4px 6px",
-              }}
-              aria-label="Dismiss pending notice"
-            >
-              Dismiss
-            </button>
+    <div className="grid lg:grid-cols-2 gap-6 h-full content-start">
+
+
+      <Card className="lg:col-span-2">
+        <h3 className="text-xl font-bold mb-6 flex items-center gap-2">Send Funds</h3>
+
+        <form onSubmit={onSubmit} className="grid md:grid-cols-2 gap-6">
+          <div className="col-span-2 md:col-span-2 flex flex-col gap-6">
+            <Input
+              label="Destination Address"
+              placeholder="Baseline Cash Address"
+              value={dest}
+              onChange={(e) => { setDest(e.target.value); resetPending(); }}
+              required
+            />
+            <Input
+              label="Amount (BLINE)"
+              placeholder="0.00000000"
+              inputMode="decimal"
+              value={amount}
+              onChange={(e) => { setAmount(e.target.value); resetPending(); }}
+              required
+            />
           </div>
-          <div style={{ color: "var(--muted)", marginTop: 4, fontSize: 13 }}>
-            Transaction was broadcasted and will be included in a block soon.
+
+          <div>
+            <Select
+              label="Spend From"
+              value={fromAddress}
+              onChange={(val) => { setFromAddress(val); resetPending(); }}
+              options={[
+                { label: "Any available address", value: "" },
+                ...keys.map((k) => ({
+                  label: `${k.address.slice(0, 20)}...`,
+                  value: k.address,
+                  disabled: (addressStats[k.address]?.maturedLiners ?? 0) <= 0,
+                  detail: addressStats[k.address] ? `${fromLiners(addressStats[k.address].maturedLiners ?? 0).toFixed(4)} BLINE` : undefined
+                }))
+              ]}
+            />
+            {addressStatsLoading && <div className="text-xs text-muted mt-2 animate-pulse">Loading balances...</div>}
           </div>
-          {lastSend && (
-            <div style={{ color: "var(--muted-strong)", marginTop: 6, fontSize: 12 }}>
-              Transaction Hash: <code>{`${lastSend.txid}`}</code>
+
+          <div>
+            <Select
+              label="Change Address"
+              value={changeAddress}
+              onChange={(val) => { setChangeAddress(val); resetPending(); }}
+              options={keys.map((k) => ({
+                label: `${k.address.slice(0, 24)}...`,
+                value: k.address
+              }))}
+            />
+          </div>
+
+          <div className="col-span-2 border-t border-white/5 pt-6">
+            <div className="flex justify-between items-end mb-4">
+              <label className="text-xs font-bold uppercase tracking-wider text-muted block">Transaction Fee Prioirty</label>
+              <div className="text-xs text-accent font-mono">{baseRateText}</div>
             </div>
-          )}
-        </div>
-      )}
-      <form onSubmit={onSubmit} className="grid-2 send-form">
-        <div className="span-2">
-          <label htmlFor="dest">Destination address</label>
-          <input
-            id="dest"
-            required
-            placeholder="Baseline address"
-            value={dest}
-            onChange={(e) => {
-              setDest(e.target.value);
-              resetPending();
-            }}
-          />
-        </div>
-        <div>
-          <label htmlFor="from">Spend from (optional)</label>
-          <select
-            id="from"
-            className="select-control"
-            value={fromAddress}
-            onChange={(e) => {
-              setFromAddress(e.target.value);
-              resetPending();
-            }}
-          >
-            <option value="">Use any wallet address</option>
-            {keys.map((k) => (
-              <option
-                key={k.address}
-                value={k.address}
-                disabled={(addressStats[k.address]?.maturedLiners ?? 0) <= 0}
-              >
-                {k.address}
-                {addressStats[k.address] &&
-                  ` · ${fromLiners(addressStats[k.address].maturedLiners ?? 0).toFixed(8)} BLINE`}
-              </option>
-            ))}
-          </select>
-          {addressStatsLoading && <div className="skeleton skeleton-line" style={{ width: "60%", marginTop: 6 }} />}
-          {addressStatsError && (
-            <div style={{ color: "var(--warning)", fontSize: 12, marginTop: 6 }}>Balance lookup failed: {addressStatsError}</div>
-          )}
-        </div>
-        <div>
-          <label htmlFor="change">Return/change address</label>
-          <select
-            id="change"
-            className="select-control"
-            value={changeAddress}
-            onChange={(e) => {
-              setChangeAddress(e.target.value);
-              resetPending();
-            }}
-            required
-          >
-            <option value="">Select where leftover funds return</option>
-            {keys.map((k) => (
-              <option key={k.address} value={k.address}>
-                {k.address}
-              </option>
-            ))}
-          </select>
-          <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 6 }}>
-            If not sure, leave as your primary address.
-          </div>
-        </div>
-        <div>
-          <label htmlFor="amount">Amount (BLINE)</label>
-          <input
-            id="amount"
-            required
-            inputMode="decimal"
-            placeholder="0.10000000"
-            value={amount}
-            onChange={(e) => {
-              setAmount(e.target.value);
-              resetPending();
-            }}
-          />
-        </div>
-        <div className="span-2">
-          <label>Fee & priority</label>
-          <div className="fee-box">
-            <div className="fee-row">
-              <div className={`chip fee-chip${feeLoading ? " skeleton skeleton-chip" : ""}`}>
-                {!feeLoading && baseRateText}
-              </div>
-              <div className="fee-mode-toggle">
+
+            <div className="bg-panel-strong/30 rounded-xl p-1 mb-4">
+              <div className="grid grid-cols-2 gap-1 mb-2">
                 <button
                   type="button"
-                  className={`fee-mode-btn${feeMode === "auto" ? " active" : ""}`}
-                  onClick={() => {
-                    setFeeMode("auto");
-                    setStatus(null);
-                    resetPending();
-                  }}
-                >
-                  Boosted auto
-                </button>
+                  className={cn("py-1.5 rounded-lg text-xs font-bold transition-all", feeMode === "auto" ? "bg-accent/20 text-accent" : "text-muted hover:text-text hover:bg-white/5")}
+                  onClick={() => { setFeeMode("auto"); resetPending(); }}
+                >Auto Priority</button>
                 <button
                   type="button"
-                  className={`fee-mode-btn${feeMode === "custom" ? " active" : ""}`}
-                  onClick={() => {
-                    setFeeMode("custom");
-                    setStatus(null);
-                    resetPending();
-                  }}
-                >
-                  Custom (liners/vB)
-                </button>
+                  className={cn("py-1.5 rounded-lg text-xs font-bold transition-all", feeMode === "custom" ? "bg-accent/20 text-accent" : "text-muted hover:text-text hover:bg-white/5")}
+                  onClick={() => { setFeeMode("custom"); resetPending(); }}
+                >Custom Rate</button>
               </div>
-            </div>
-            {feeMode === "auto" ? (
-              <div className="fee-preset-grid">
-                {FEE_PRESETS.map((preset) => (
-                  <button
-                    type="button"
-                    key={preset.key}
-                    className={`fee-preset${feePresetKey === preset.key ? " active" : ""}`}
-                    onClick={() => {
-                      setFeePresetKey(preset.key);
-                      resetPending();
-                    }}
-                  >
-                    <div className="fee-preset-title">
-                      {preset.label}{" "}
-                      <span className="fee-preset-multiplier">
-                        ×{preset.multiplier.toFixed(2).replace(/\.?0+$/, "")}
-                      </span>
-                    </div>
-                    <div className="fee-preset-hint">{preset.hint}</div>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="fee-custom">
-                <input
-                  inputMode="decimal"
-                  placeholder="e.g. 25 (liners/vB, like sats/vB)"
+
+              {feeMode === "auto" ? (
+                <div className="grid grid-cols-3 gap-2">
+                  {FEE_PRESETS.map((p) => {
+                    const base = baseEstimatedFeeRate ?? fallbackFeeRate;
+                    const val = Math.max(MIN_RELAY_FEE_RATE_LINERS_PER_KB, Math.round(base * p.multiplier));
+                    const ratePerVb = val / 1000;
+
+                    return (
+                      <button
+                        key={p.key}
+                        type="button"
+                        onClick={() => { setFeePresetKey(p.key); resetPending(); }}
+                        className={cn(
+                          "flex flex-col items-center justify-center p-2 rounded-lg border transition-all h-20",
+                          feePresetKey === p.key ? "bg-accent/10 border-accent/40 text-accent shadow-sm" : "bg-panel border-transparent hover:bg-white/5 text-muted"
+                        )}
+                      >
+                        <span className="font-bold text-sm">{p.label}</span>
+                        <div className="flex flex-col items-center mt-1">
+                          <span className="text-xs font-mono font-bold">{ratePerVb.toFixed(2)} L/vB</span>
+                          <span className="text-[9px] opacity-60 uppercase tracking-wider font-semibold">{p.hint}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <Input
+                  placeholder="e.g. 25 (liners/vB)"
                   value={customFeeRate}
-                  onChange={(e) => {
-                    setCustomFeeRate(e.target.value);
-                    resetPending();
-                  }}
+                  onChange={(e) => { setCustomFeeRate(e.target.value); resetPending(); }}
                 />
-                <div className="fee-note">
-                  We interpret this as liners/vB. {previewFeeRate ? `≈ ${(previewFeeRate / 100_000_000).toFixed(6)} BLINE/kB` : "Enter a number to preview."}
-                </div>
-              </div>
-            )}
-            {previewFeeRatePerVb !== null && previewFeeRate !== null && (
-              <div className="fee-note">
-                Effective rate: {previewFeeRatePerVb.toFixed(2)} liners/vB · {(previewFeeRate / 100_000_000).toFixed(6)} BLINE/kB
-              </div>
-            )}
-            {previewClamped && <div className="fee-note">Raised to minimum relay fee</div>}
-            {feeNote && <div className="fee-note">{feeNote}</div>}
-          </div>
-        </div>
-        <div className="span-2 send-actions">
-          <button className="btn btn-primary" type="submit" disabled={building}>
-            {building ? "Preparing..." : pendingSend ? "Update review" : "Review & send"}
-          </button>
-          {status && <span className="send-status">{status}</span>}
-        </div>
-        {pendingSend && (
-          <div className="span-2 send-review">
-            <div className="send-review-header">
-              <div>
-                <div className="send-review-title">Review send</div>
-                <div className="send-review-subtitle">Confirm before broadcasting.</div>
-              </div>
-              <div className="send-review-amount">{pendingSend.amount.toFixed(8)} BLINE</div>
+              )}
             </div>
-            <div className="send-review-grid">
-              <div>
-                <div className="send-review-label">Destination</div>
-                <div className="send-review-value">{pendingSend.toAddress}</div>
+            {feeNote && <p className="text-xs text-warning">{feeNote}</p>}
+          </div>
+
+          <div className="col-span-2 flex flex-col gap-4">
+            {error && (
+              <div className="p-3 bg-danger/10 border border-danger/20 rounded-xl text-danger text-sm flex items-center gap-2 font-medium">
+                <Warning weight="fill" />
+                {error} <span className="text-xs opacity-70">{errorDetail}</span>
               </div>
-              <div>
-                <div className="send-review-label">Estimated fee (this tx)</div>
-                <div className="send-review-value">{fromLiners(pendingSend.build.fee).toFixed(8)} BLINE</div>
-                <div className="send-review-note">vsize {pendingSend.build.vsize}</div>
-              </div>
-              <div>
-                <div className="send-review-label">Fee rate</div>
-                <div className="send-review-value">
-                  {(pendingSend.feeRateLinersPerKb / 100_000_000).toFixed(6)} BLINE/kB
-                </div>
-                <div className="send-review-note">
-                  {pendingSend.feeMode === "custom" ? (
-                    <>Manual {pendingSend.customFeeRatePerVb?.toFixed(2) ?? (pendingSend.feeRateLinersPerKb / 1000).toFixed(2)} liners/vB</>
-                  ) : (
-                    <>
-                      {pendingSend.feePriorityLabel} · target ~{pendingSend.feeTarget} blocks · boost ×
-                      {pendingSend.feeMultiplier.toFixed(2).replace(/\.?0+$/, "")}
-                    </>
-                  )}
-                </div>
-                {pendingSend.baseFeeRateLinersPerKb !== null && pendingSend.feeMode === "auto" && (
-                  <div className="send-review-note">
-                    Base est: {(pendingSend.baseFeeRateLinersPerKb / 1000).toFixed(2)} liners/vB
+            )}
+
+            <Button type="submit" size="lg" disabled={building} loading={building}>
+              {pendingSend ? "Update Review" : "Review Transaction"}
+            </Button>
+          </div>
+        </form>
+      </Card>
+
+      {createPortal(
+        <AnimatePresence>
+          {pendingSend && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm font-sans"
+            >
+              <motion.div
+                initial={{ scale: 0.95, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.95, y: 20 }}
+                className="w-full max-w-lg"
+              >
+                <Card glass className="shadow-2xl ring-1 ring-white/10">
+                  <div className="mb-6 flex justify-between items-start">
+                    <div>
+                      <h3 className="font-bold text-lg">Confirm Transaction</h3>
+                      <p className="text-muted text-sm">Sign and broadcast to the network</p>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-2xl font-bold text-accent">{pendingSend.amount.toFixed(8)} BLINE</div>
+                      <div className="text-xs text-muted font-mono">Sending Amount</div>
+                    </div>
                   </div>
-                )}
-              </div>
-            </div>
-            <div className="send-review-actions">
-              <button className="btn btn-primary" type="button" onClick={onConfirmSend} disabled={sending}>
-                {sending ? "Sending..." : "Confirm send"}
-              </button>
-              <button className="btn btn-ghost" type="button" onClick={onCancelSend} disabled={sending}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-        {lastSend && !pendingSend && !pendingMempool && (
-          <div className="span-2 send-summary">
-            <div className="send-summary-header">
-              <div className="send-summary-title">Last sent transaction</div>
-              <div className="send-summary-amount">{lastSend.amount.toFixed(8)} BLINE</div>
-            </div>
-            <div className="send-summary-grid">
-              <div>
-                <div className="send-summary-label">Fee paid</div>
-                <div className="send-summary-value">{fromLiners(lastSend.fee).toFixed(8)} BLINE</div>
-                <div className="send-summary-note">vsize {lastSend.vsize}</div>
-              </div>
-              <div>
-                <div className="send-summary-label">Fee rate</div>
-                <div className="send-summary-value">
-                  {(lastSend.feeRateLinersPerKb / 100_000_000).toFixed(6)} BLINE/kB
-                </div>
-                <div className="send-summary-note">
-                  {lastSend.feeMode === "custom"
-                    ? `Manual ${lastSend.customFeeRatePerVb?.toFixed(2) ?? (lastSend.feeRateLinersPerKb / 1000).toFixed(2)} liners/vB`
-                    : `${lastSend.feePriorityLabel} · target ~${lastSend.feeTarget} blocks · boost ×${lastSend.feeMultiplier
-                        .toFixed(2)
-                        .replace(/\.?0+$/, "")}`}
-                </div>
-              </div>
-              <div className="send-summary-txid">
-                <div className="send-summary-label">Transaction id</div>
-                <code className="send-summary-code">{lastSend.txid}</code>
-              </div>
-            </div>
-          </div>
-        )}
-        {error && (
-          <div className="span-2" style={{ color: "var(--danger)" }}>
-            <strong>Error:</strong> {error} {errorDetail ?? ""}
-          </div>
-        )}
-      </form>
+
+                  <div className="space-y-4 p-4 rounded-xl bg-black/40 border border-white/5 font-mono text-sm mb-6">
+                    <div className="flex justify-between">
+                      <span className="text-muted">Destination</span>
+                      <span className="text-right ml-4 break-all text-white/90">{pendingSend.toAddress}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted">Network Fee</span>
+                      <span className="text-right text-white/90">{fromLiners(pendingSend.build.fee).toFixed(8)} BLINE</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted">Fee Rate (Abs)</span>
+                      <span className="text-right text-white/90">{(pendingSend.feeRateLinersPerKb / 1000).toFixed(2)} L/vB</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <Button variant="ghost" onClick={onCancelSend} disabled={sending}>
+                      <X size={18} className="mr-2" /> Cancel
+                    </Button>
+                    <Button onClick={onConfirmSend} disabled={sending} loading={sending}>
+                      Confirm & Send <ArrowRight size={18} className="ml-2" />
+                    </Button>
+                  </div>
+                </Card>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
+
+      {createPortal(
+        <AnimatePresence>
+          {pendingMempool && showPendingBanner && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm font-sans"
+            >
+              <motion.div
+                initial={{ scale: 0.95, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.95, y: 20 }}
+                className="w-full max-w-md"
+              >
+                <Card glass className="shadow-2xl ring-1 ring-accent/20 flex flex-col items-center text-center p-8 relative overflow-hidden">
+                  <div className="absolute inset-0 bg-accent/5 pointer-events-none" />
+                  <div className="absolute top-0 w-full h-1 bg-gradient-to-r from-transparent via-accent to-transparent opacity-50 pointer-events-none" />
+
+                  <div className="w-20 h-20 rounded-full bg-accent/10 flex items-center justify-center mb-6 ring-1 ring-accent/30 shadow-[0_0_40px_-10px_rgba(71,194,255,0.3)]">
+                    <RocketLaunch weight="fill" className="text-accent text-4xl" />
+                  </div>
+
+                  <h3 className="text-2xl font-bold text-white mb-2">Transaction Sent!</h3>
+                  <p className="text-muted text-sm mb-8 max-w-[80%] mx-auto">
+                    Your funds have been broadcasted to the network and are awaiting confirmation.
+                  </p>
+
+                  {lastSend && (
+                    <div className="w-full bg-black/40 rounded-xl p-4 border border-white/5 mb-8 text-left">
+                      <div className="text-[10px] uppercase tracking-wider font-bold text-muted mb-1">Transaction ID</div>
+                      <code className="text-xs text-accent/90 break-all font-mono select-all">
+                        {lastSend.txid}
+                      </code>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3 w-full">
+                    <Button
+                      variant="ghost"
+                      className="w-full"
+                      onClick={(e) => {
+                        if (lastSend?.txid) {
+                          navigator.clipboard.writeText(lastSend.txid);
+                          const span = e.currentTarget.querySelector('span');
+                          if (span) {
+                            const original = span.innerText;
+                            span.innerText = "Copied!";
+                            setTimeout(() => span.innerText = "Copy TX ID", 2000);
+                          }
+                        }
+                      }}
+                    >
+                      <span>Copy TX ID</span>
+                    </Button>
+                    <Button className="w-full" onClick={() => setShowPendingBanner(false)}>
+                      Done
+                    </Button>
+                  </div>
+                </Card>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 }

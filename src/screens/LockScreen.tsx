@@ -1,7 +1,10 @@
 import { FormEvent, useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-
+import { useNavigate } from "react-router-dom";
 import { useWallet } from "../state/wallet";
+import { AuthLayout } from "../components/AuthLayout";
+import { Button } from "../components/ui/Button";
+import { Input } from "../components/ui/Input";
+import { ShieldCheck, Warning } from "phosphor-react";
 
 export function LockScreen() {
   const { unlock, hasWallet, clear, status } = useWallet();
@@ -13,7 +16,7 @@ export function LockScreen() {
 
   // If no wallet is stored, send to create/import instead of showing unlock UI.
   useEffect(() => {
-    if (status === "empty" || !hasWallet) {
+    if (status === "empty" && !hasWallet) {
       navigate("/create", { replace: true });
     }
   }, [status, hasWallet, navigate]);
@@ -38,67 +41,85 @@ export function LockScreen() {
     }
   };
 
+  const Hero = (
+    <>
+      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent/10 border border-accent/20 text-accent font-bold text-xs uppercase tracking-wider w-fit">
+        <ShieldCheck size={16} weight="fill" />
+        Baseline Cash Light
+      </div>
+      <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-text">
+        Welcome back
+      </h2>
+      <p className="text-base text-muted leading-relaxed">
+        Unlock with your passphrase. Your keys never leave this device.
+      </p>
+      <ul className="space-y-2 text-muted/80 text-sm">
+        <li className="flex gap-3 items-start">
+          <div className="w-1.5 h-1.5 rounded-full bg-accent mt-2" />
+          <span>Keep your passphrase private; it decrypts the wallet locally.</span>
+        </li>
+        <li className="flex gap-3 items-start">
+          <div className="w-1.5 h-1.5 rounded-full bg-accent mt-2" />
+          <span>Use "Forget wallet" only if you have the seed backed up.</span>
+        </li>
+      </ul>
+    </>
+  );
+
   return (
-    <div className="auth-page">
-      <div className="auth-card">
-        <div className="auth-hero">
-          <span className="pill">Baseline Light</span>
-          <h2>Welcome back</h2>
-          <p>Unlock with your passphrase. Keys never leave this device.</p>
-          <ul className="auth-list">
-            <li>Keep your passphrase private; it decrypts the wallet locally.</li>
-            <li>Use “Forget wallet” only if you have the seed backed up.</li>
-            <li>Need to start over? Create or import from Settings later.</li>
-          </ul>
-        </div>
-        <div className="auth-panel">
-          <form onSubmit={onSubmit} className="auth-form">
-            <div className="full">
-              <label htmlFor="passphrase">Passphrase</label>
-              <input
-                id="passphrase"
-                type="password"
-                autoFocus
-                required
-                placeholder="Enter the passphrase you encrypted with"
-                value={passphrase}
-                onChange={(e) => setPassphrase(e.target.value)}
-              />
-            </div>
-            {error && (
-              <div className="full" style={{ color: "var(--danger)", fontWeight: 600 }}>
-                {error}
-              </div>
-            )}
-            <div className="auth-actions full">
-              <button className="btn btn-primary" type="submit" disabled={busy}>
-                {busy ? "Unlocking..." : "Unlock"}
-              </button>
-              {hasWallet && !confirmForget && (
-                <button type="button" className="btn btn-danger" onClick={() => setConfirmForget(true)}>
-                  Forget wallet
-                </button>
-              )}
-            </div>
-          </form>
-          {confirmForget && (
-            <div className="confirm-panel">
-              <div>
-                <div className="confirm-title">Forget wallet from this device?</div>
-                <div className="confirm-note">This removes keys locally. Make sure you have your seed or backup first.</div>
-              </div>
-              <div className="confirm-actions">
-                <button type="button" className="btn btn-danger" onClick={onForget}>
-                  Confirm forget
-                </button>
-                <button type="button" className="btn btn-ghost" onClick={() => setConfirmForget(false)}>
-                  Cancel
-                </button>
-              </div>
-            </div>
+    <AuthLayout hero={Hero}>
+      <form onSubmit={onSubmit} className="flex flex-col gap-6">
+        <Input
+          label="Passphrase"
+          type="password"
+          autoFocus
+          required
+          placeholder="Enter the passphrase you encrypted with"
+          value={passphrase}
+          onChange={(e) => setPassphrase(e.target.value)}
+          error={error || undefined}
+        />
+
+        <div className="flex flex-col gap-4 mt-2">
+          <Button type="submit" loading={busy} size="lg" className="w-full">
+            Unlock Wallet
+          </Button>
+
+          {hasWallet && !confirmForget && (
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              className="border-danger/30 text-danger hover:bg-danger/10 hover:text-danger hover:border-danger/60 w-full"
+              onClick={() => setConfirmForget(true)}
+            >
+              Forget wallet
+            </Button>
           )}
         </div>
-      </div>
-    </div>
+      </form>
+
+      {confirmForget && (
+        <div className="mt-6 p-4 rounded-xl border border-danger/30 bg-danger/5">
+          <div className="flex items-start gap-3">
+            <Warning className="text-danger shrink-0 mt-0.5" size={20} weight="fill" />
+            <div className="flex flex-col gap-4 w-full">
+              <div>
+                <h4 className="font-bold text-danger">Forget wallet?</h4>
+                <p className="text-sm text-muted mt-1">This removes keys locally. Ensure you have your seed backed up.</p>
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" variant="danger" onClick={onForget}>
+                  Confirm Forget
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setConfirmForget(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </AuthLayout>
   );
 }

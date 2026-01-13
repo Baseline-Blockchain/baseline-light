@@ -1,7 +1,11 @@
 import { FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-
 import { useWallet } from "../state/wallet";
+import { AuthLayout } from "../components/AuthLayout";
+import { Button } from "../components/ui/Button";
+import { Input } from "../components/ui/Input";
+import { cn } from "../lib/utils";
+import { DownloadSimple, FileCode, Key, TextT } from "phosphor-react";
 
 export function ImportWalletScreen() {
   const { importMnemonic, importWif, importWalletJson } = useWallet();
@@ -38,95 +42,110 @@ export function ImportWalletScreen() {
     }
   };
 
-  return (
-    <div className="auth-page">
-      <div className="auth-card">
-        <div className="auth-hero">
-          <span className="pill">Bring your wallet</span>
-          <h2>Import existing keys</h2>
-          <p>
-            Supports mnemonic, WIF, or Baseline wallet.json. Everything stays on this device and is encrypted with the
-            passphrase you choose below.
-          </p>
-          <ul className="auth-list">
-            <li>Never paste secrets into untrusted devices.</li>
-            <li>Passphrase here encrypts the wallet on this device only.</li>
-            <li>Seeds/keys are not sent to the node.</li>
-          </ul>
-        </div>
-        <div className="auth-panel">
-          <div className="auth-tabs">
-            <button className={`auth-tab ${mode === "mnemonic" ? "active" : ""}`} type="button" onClick={() => setMode("mnemonic")}>
-              Mnemonic
-            </button>
-            <button className={`auth-tab ${mode === "wif" ? "active" : ""}`} type="button" onClick={() => setMode("wif")}>
-              WIF key
-            </button>
-            <button className={`auth-tab ${mode === "walletjson" ? "active" : ""}`} type="button" onClick={() => setMode("walletjson")}>
-              wallet.json
-            </button>
-            <Link to="/create" className="auth-tab" style={{ textDecoration: "none", textAlign: "center" }}>
-              New wallet
-            </Link>
-          </div>
-          <form onSubmit={onSubmit} className="auth-form">
-            <div className="full">
-              <label htmlFor="secret">
-                {mode === "mnemonic" ? "12-word mnemonic" : mode === "wif" ? "WIF private key" : "wallet.json contents"}
-              </label>
-              <textarea
-                id="secret"
-                rows={mode === "mnemonic" ? 3 : mode === "wif" ? 2 : 6}
-                required
-                placeholder={
-                  mode === "mnemonic"
-                    ? "word1 word2 ..."
-                    : mode === "wif"
-                      ? "L1aW4aubDFB7yfras2S1mN3bqg9w7..."
-                      : "{ \"seed\": \"...\", \"encrypted\": false, ... }"
-                }
-                value={secret}
-                onChange={(e) => setSecret(e.target.value)}
-              />
-            </div>
-            <div className="full">
-              <label htmlFor="passphrase">Passphrase</label>
-              <input
-                id="passphrase"
-                type="password"
-                required
-                placeholder="Encrypt wallet on this device"
-                value={passphrase}
-                onChange={(e) => setPassphrase(e.target.value)}
-              />
-            </div>
-            <div className="full">
-              <label htmlFor="confirm">Confirm</label>
-              <input
-                id="confirm"
-                type="password"
-                required
-                placeholder="Repeat passphrase"
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-              />
-            </div>
-            {error && (
-              <div className="full" style={{ color: "var(--danger)", fontWeight: 600 }}>
-                {error}
-              </div>
-            )}
-            <div className="auth-actions full">
-              <button className="btn btn-primary" type="submit" disabled={busy}>
-                {busy ? "Importing..." : "Import"}
-              </button>
-              <Link to="/lock" className="btn btn-ghost">
-                Back
-              </Link>
-            </div>
-          </form>
-        </div>
+  const Hero = (
+    <>
+      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent/10 border border-accent/20 text-accent font-bold text-xs uppercase tracking-wider w-fit">
+        <DownloadSimple size={16} weight="fill" />
+        Import Wallet
       </div>
-    </div>
+      <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-text">
+        Bring your existing keys
+      </h2>
+      <p className="text-base text-muted leading-relaxed">
+        Restore access using your seed phrase, private key, or backup file.
+      </p>
+      <ul className="space-y-2 text-muted/80 text-sm">
+        <li className="flex gap-3 items-start">
+          <div className="w-1.5 h-1.5 rounded-full bg-accent mt-2" />
+          <span>Never paste secrets into untrusted devices.</span>
+        </li>
+        <li className="flex gap-3 items-start">
+          <div className="w-1.5 h-1.5 rounded-full bg-accent mt-2" />
+          <span>Passphrase here encrypts the wallet on this device only.</span>
+        </li>
+      </ul>
+    </>
+  );
+
+  return (
+    <AuthLayout hero={Hero}>
+      <div className="flex bg-bg/50 p-1 rounded-xl mb-4 border border-white/5">
+        <button
+          onClick={() => setMode("mnemonic")}
+          className={cn(
+            "flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-lg transition-all",
+            mode === "mnemonic" ? "bg-accent/10 text-accent shadow-sm" : "text-muted hover:text-text hover:bg-white/5"
+          )}
+        >
+          <TextT size={18} /> Mnemonic
+        </button>
+        <button
+          onClick={() => setMode("wif")}
+          className={cn(
+            "flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-lg transition-all",
+            mode === "wif" ? "bg-accent/10 text-accent shadow-sm" : "text-muted hover:text-text hover:bg-white/5"
+          )}
+        >
+          <Key size={18} /> WIF
+        </button>
+        <button
+          onClick={() => setMode("walletjson")}
+          className={cn(
+            "flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-lg transition-all",
+            mode === "walletjson" ? "bg-accent/10 text-accent shadow-sm" : "text-muted hover:text-text hover:bg-white/5"
+          )}
+        >
+          <FileCode size={18} /> JSON
+        </button>
+      </div>
+
+      <form onSubmit={onSubmit} className="flex flex-col gap-4">
+        <div className="flex flex-col gap-2">
+          <label className="text-xs font-bold uppercase tracking-wider text-muted ml-1">
+            {mode === "mnemonic" ? "12-word mnemonic" : mode === "wif" ? "WIF private key" : "wallet.json contents"}
+          </label>
+          <textarea
+            className="w-full px-4 py-3 bg-panel-strong/50 border border-white/5 rounded-xl focus:outline-none focus:ring-2 focus:border-accent/50 focus:ring-accent/20 transition-all placeholder:text-muted/50 resize-y min-h-[80px]"
+            required
+            placeholder={
+              mode === "mnemonic"
+                ? "word1 word2 word3 ..."
+                : mode === "wif"
+                  ? "L1aW4aubDFB7yfras2S1mN3bqg9w7..."
+                  : "{ \"seed\": \"...\", \"encrypted\": false, ... }"
+            }
+            value={secret}
+            onChange={(e) => setSecret(e.target.value)}
+          />
+        </div>
+
+        <Input
+          label="Passphrase"
+          type="password"
+          required
+          placeholder="Encrypt wallet locally"
+          value={passphrase}
+          onChange={(e) => setPassphrase(e.target.value)}
+        />
+        <Input
+          label="Confirm"
+          type="password"
+          required
+          placeholder="Repeat passphrase"
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          error={error || undefined}
+        />
+
+        <div className="flex flex-col gap-4 mt-2">
+          <Button type="submit" loading={busy} size="lg" className="w-full">
+            Import Wallet
+          </Button>
+          <Link to="/create">
+            <Button variant="outline" size="lg" className="w-full">Create New Instead</Button>
+          </Link>
+        </div>
+      </form>
+    </AuthLayout>
   );
 }
