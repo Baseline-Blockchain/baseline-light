@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { ArrowRight, Info, RocketLaunch, Warning, X } from "phosphor-react";
+import { ArrowRight, RocketLaunch, Warning, X } from "phosphor-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 import { useSettings } from "../state/settings";
@@ -10,8 +10,9 @@ import { fromLiners, toLiners } from "../lib/wallet";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
-import { Select, type SelectOption } from "../components/ui/Select";
+import { Select } from "../components/ui/Select";
 import { cn } from "../lib/utils";
+import { useRpcQuery } from "../state/query";
 
 const MIN_RELAY_FEE_RATE_LINERS_PER_KB = 5_000;
 type FeeMode = "auto" | "custom";
@@ -72,9 +73,6 @@ export function SendScreen() {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
-  const [feeRate, setFeeRate] = useState<number | null>(null);
-  const [feeLoading, setFeeLoading] = useState(false);
-  const [feeNote, setFeeNote] = useState<string | null>(null);
   const [feeMode, setFeeMode] = useState<FeeMode>("auto");
   const [feePresetKey, setFeePresetKey] = useState<(typeof FEE_PRESETS)[number]["key"]>("standard");
   const [customFeeRate, setCustomFeeRate] = useState("");
@@ -84,10 +82,8 @@ export function SendScreen() {
   const [lastSend, setLastSend] = useState<LastSend | null>(null);
   const [pendingMempool, setPendingMempool] = useState<{ txid: string; confirmations: number } | null>(null);
   const [showPendingBanner, setShowPendingBanner] = useState(false);
-  const [addressStats, setAddressStats] = useState<Record<string, AddressStats>>({});
-  const [addressStatsLoading, setAddressStatsLoading] = useState(false);
-  const [addressStatsError, setAddressStatsError] = useState<string | null>(null);
   const addresses = useMemo(() => keys.map((k) => k.address), [keys]);
+  const addressesKey = useMemo(() => addresses.join("|"), [addresses]);
 
   const collectUtxosForSpend = useCallback(
     async (addrList: string[], amountLiners: number, feeRateLinersPerKb: number) => {
@@ -127,6 +123,67 @@ export function SendScreen() {
 
   const fallbackFeeRate = 5_000;
 
+  const feeEstimate = useRpcQuery(
+    ["fee-estimate", feeTarget],
+    () => client.estimateSmartFee(feeTarget),
+    {
+      staleTime: 60_000,
+      refetchIntervalMs: 60_000,
+      keepPreviousData: true,
+    },
+  );
+
+  const baseEstimatedFeeRate = useMemo(() => {
+    const rate = feeEstimate.data?.feerate;
+    return typeof rate === "number" ? rate * 100_000_000 : null;
+  }, [feeEstimate.data?.feerate]);
+
+  const feeNote = useMemo(() => {
+    const errors = Array.isArray(feeEstimate.data?.errors)
+      ? feeEstimate.data.errors.filter(Boolean)
+      : [];
+    if (errors.length > 0) {
+      return `estimatesmartfee: ${errors.join(" ")}`;
+    }
+    if (feeEstimate.error) {
+      const message = feeEstimate.error instanceof Error ? feeEstimate.error.message : String(feeEstimate.error);
+      return `estimatesmartfee failed: ${message}`;
+    }
+    if (!feeEstimate.loading && (!feeEstimate.data || typeof feeEstimate.data.feerate !== "number")) {
+      return "estimatesmartfee: no feerate returned; using fallback";
+    }
+    return null;
+  }, [feeEstimate.data, feeEstimate.error, feeEstimate.loading]);
+
+  const addressStatsQuery = useRpcQuery<Record<string, AddressStats>>(
+    ["address-stats", addressesKey],
+    async () => {
+      if (!addresses.length) return {};
+      const results = await Promise.all(
+        addresses.map(async (addr) => {
+          const bal = await client.getAddressBalance([addr]);
+          const matured = bal.matured_liners ?? bal.balance_liners ?? 0;
+          const total = bal.balance_liners ?? 0;
+          return { addr, matured, total };
+        }),
+      );
+      return results.reduce<Record<string, AddressStats>>((acc, { addr, matured, total }) => {
+        acc[addr] = { maturedLiners: matured, totalLiners: total };
+        return acc;
+      }, {});
+    },
+    {
+      enabled: addresses.length > 0,
+      staleTime: 20_000,
+      refetchIntervalMs: 30_000,
+      keepPreviousData: true,
+    },
+  );
+
+  const addressStats = addressStatsQuery.data ?? {};
+  const addressStatsLoading = addressStatsQuery.loading;
+  const addressStatsError = addressStatsQuery.error ? addressStatsQuery.error.message : null;
+
   const selectedPreset = useMemo(
     () => FEE_PRESETS.find((p) => p.key === feePresetKey) ?? FEE_PRESETS[0],
     [feePresetKey],
@@ -137,11 +194,6 @@ export function SendScreen() {
     if (!Number.isFinite(numeric) || numeric <= 0) return null;
     return Math.round(numeric * 1000);
   }, [customFeeRate]);
-
-  const baseEstimatedFeeRate = useMemo(
-    () => (typeof feeRate === "number" && Number.isFinite(feeRate) ? feeRate : null),
-    [feeRate],
-  );
 
   const computeEffectiveRate = useCallback(
     (baseRate: number | null) => {
@@ -161,10 +213,7 @@ export function SendScreen() {
     [feeMode, parsedCustomRateLinersPerKb, selectedPreset.multiplier],
   );
 
-  const { rate: previewFeeRate, clamped: previewClamped } = useMemo(
-    () => computeEffectiveRate(baseEstimatedFeeRate),
-    [computeEffectiveRate, baseEstimatedFeeRate],
-  );
+  const { rate: previewFeeRate } = useMemo(() => computeEffectiveRate(baseEstimatedFeeRate), [computeEffectiveRate, baseEstimatedFeeRate]);
 
   const scrollMainToTop = () => {
     const el = document.querySelector<HTMLElement>(".shell-main");
@@ -180,76 +229,6 @@ export function SendScreen() {
     baseEstimatedFeeRate !== null
       ? `${(baseEstimatedFeeRate / 1000).toFixed(2)} liners/vB`
       : `${(fallbackFeeRate / 1000).toFixed(2)} liners/vB (fallback)`;
-
-  useEffect(() => {
-    async function fetchFee() {
-      setFeeLoading(true);
-      try {
-        const est = await client.estimateSmartFee(feeTarget);
-        if (est && typeof est.feerate === "number") {
-          setFeeRate(est.feerate * 100_000_000); // convert to liners/kB
-        } else {
-          setFeeRate(null);
-        }
-        const errors = Array.isArray(est?.errors) ? est.errors.filter(Boolean) : [];
-        if (errors.length > 0) {
-          setFeeNote(`estimatesmartfee: ${errors.join(" ")}`);
-        } else if (!est || typeof est.feerate !== "number") {
-          setFeeNote("estimatesmartfee: no feerate returned; using fallback");
-        } else {
-          setFeeNote(null);
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        setFeeNote(`estimatesmartfee failed: ${message}`);
-        setFeeRate(null);
-      } finally {
-        setFeeLoading(false);
-      }
-    }
-    fetchFee();
-  }, [client, feeTarget]);
-
-  useEffect(() => {
-    let active = true;
-    async function fetchAddressStats() {
-      if (!addresses.length) {
-        setAddressStats({});
-        setAddressStatsError(null);
-        setAddressStatsLoading(false);
-        return;
-      }
-      setAddressStatsLoading(true);
-      setAddressStatsError(null);
-      try {
-        const results = await Promise.all(
-          addresses.map(async (addr) => {
-            const bal = await client.getAddressBalance([addr]);
-            const matured = bal.matured_liners ?? bal.balance_liners ?? 0;
-            const total = bal.balance_liners ?? 0;
-            return { addr, matured, total };
-          }),
-        );
-        if (!active) return;
-        const stats: Record<string, AddressStats> = {};
-        results.forEach(({ addr, matured, total }) => {
-          stats[addr] = { maturedLiners: matured, totalLiners: total };
-        });
-        setAddressStats(stats);
-      } catch (err) {
-        if (!active) return;
-        const message = err instanceof Error ? err.message : String(err);
-        setAddressStatsError(message);
-        setAddressStats({});
-      } finally {
-        if (active) setAddressStatsLoading(false);
-      }
-    }
-    fetchAddressStats();
-    return () => {
-      active = false;
-    };
-  }, [addresses, client]);
 
   useEffect(() => {
     if (!fromAddress) return;
@@ -290,15 +269,15 @@ export function SendScreen() {
     setBuilding(true);
     setStatus("Preparing review...");
     try {
-      // ... (existing fee refresh logic)
-      let liveRate = feeRate;
+      let liveRate = baseEstimatedFeeRate;
       try {
-        const est = await client.estimateSmartFee(feeTarget);
+        const est = await feeEstimate.refetch();
         if (est && typeof est.feerate === "number") {
           liveRate = est.feerate * 100_000_000;
-          setFeeRate(liveRate);
         }
-      } catch { }
+      } catch {
+        // keep existing rate/fallback
+      }
 
       const baseRate = typeof liveRate === "number" && Number.isFinite(liveRate) ? liveRate : null;
       const { rate, clamped } = computeEffectiveRate(baseRate);
@@ -461,6 +440,7 @@ export function SendScreen() {
               ]}
             />
             {addressStatsLoading && <div className="text-xs text-muted mt-2 animate-pulse">Loading balances...</div>}
+            {addressStatsError && !addressStatsLoading && <div className="text-xs text-danger mt-2">{addressStatsError}</div>}
           </div>
 
           <div>

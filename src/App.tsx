@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router-dom
 
 import { Shell } from "./components/Shell";
 import { SettingsProvider } from "./state/settings";
+import { QueryProvider } from "./state/query";
 import { WalletProvider, useWallet } from "./state/wallet";
 import { CreateWalletScreen } from "./screens/CreateWallet";
 import { ImportWalletScreen } from "./screens/ImportWallet";
@@ -28,21 +29,23 @@ function Protected() {
 export default function App() {
   return (
     <SettingsProvider>
-      <WalletProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/lock" element={<LockScreen />} />
-            <Route path="/create" element={<CreateWalletScreen />} />
-            <Route path="/import" element={<ImportWalletScreen />} />
-            <Route element={<Protected />}>
-              <Route path="/" element={<HomeScreen />} />
-              <Route path="/send" element={<SendScreen />} />
-              <Route path="/settings" element={<SettingsScreen />} />
-            </Route>
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </BrowserRouter>
-      </WalletProvider>
+      <QueryProvider>
+        <WalletProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/lock" element={<LockScreen />} />
+              <Route path="/create" element={<CreateWalletScreen />} />
+              <Route path="/import" element={<ImportWalletScreen />} />
+              <Route element={<Protected />}>
+                <Route path="/" element={<HomeScreen />} />
+                <Route path="/send" element={<SendScreen />} />
+                <Route path="/settings" element={<SettingsScreen />} />
+              </Route>
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </BrowserRouter>
+        </WalletProvider>
+      </QueryProvider>
     </SettingsProvider>
   );
 }

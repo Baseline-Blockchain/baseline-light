@@ -1,6 +1,6 @@
 import { Buffer } from "buffer";
 import { payments } from "bitcoinjs-lib";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { ArrowDown, ArrowUp, Clock, Copy, Globe } from "phosphor-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -12,14 +12,9 @@ import { fromLiners } from "../lib/wallet";
 import { Card } from "../components/ui/Card";
 import { cn } from "../lib/utils";
 import { Button } from "../components/ui/Button";
+import { useRpcQuery } from "../state/query";
 
 const EXPLORER_TX = "https://explorer.baseline.cash/tx/";
-
-type BalanceState = {
-  data?: AddressBalance;
-  loading: boolean;
-  error?: string;
-};
 
 type ActivityItem = {
   txid: string;
@@ -35,15 +30,7 @@ export function HomeScreen() {
   const { keys } = useWallet();
   const addresses = useMemo(() => keys.map((k) => k.address), [keys]);
   const addressSet = useMemo(() => new Set(addresses), [addresses]);
-
-  const [balance, setBalance] = useState<BalanceState>({ loading: false });
-  const [activity, setActivity] = useState<{ loading: boolean; items: ActivityItem[]; error?: string }>({
-    loading: false,
-    items: [],
-  });
-  const lastHeight = useRef<number | null>(null);
-  const lastBalance = useRef<AddressBalance | undefined>(undefined);
-  const lastActivity = useRef<ActivityItem[]>([]);
+  const addressKey = useMemo(() => addresses.join("|"), [addresses]);
 
   const decodeAddress = useCallback((scriptHex?: string | null) => {
     if (!scriptHex) return null;
@@ -57,7 +44,7 @@ export function HomeScreen() {
 
   const buildActivity = useCallback(
     async (txList: any[]): Promise<ActivityItem[]> => {
-      if (!txList.length || addressSet.size === 0) return [];
+      if (!Array.isArray(txList) || txList.length === 0 || addressSet.size === 0) return [];
       const rawCache = new Map<string, any>();
       const fetchRaw = async (txid: string, blockhash?: string | null) => {
         if (rawCache.has(txid)) return rawCache.get(txid);
@@ -113,80 +100,47 @@ export function HomeScreen() {
     [addressSet, client, decodeAddress],
   );
 
-  const load = useCallback(
-    async (opts?: { quiet?: boolean }) => {
-      if (!addresses.length) return;
-      const hasExisting = Boolean(lastBalance.current);
-      const hasActivity = lastActivity.current.length > 0;
-      if (!opts?.quiet) {
-        setBalance((prev) => ({ ...prev, loading: hasExisting ? prev.loading : true, error: undefined }));
-        setActivity((prev) => ({ ...prev, loading: hasActivity ? prev.loading : true, error: undefined }));
-      }
-      try {
-        const [b, txids] = await Promise.all([
-          client.getAddressBalance(addresses),
-          client.getAddressTxids(addresses, true),
-        ]);
-        const txList = Array.isArray(txids) ? txids.slice(0, 5) : [];
-        const activityItems = await buildActivity(txList);
-        lastBalance.current = b;
-        lastActivity.current = activityItems;
-        setBalance({ loading: false, data: b });
-        setActivity({ loading: false, items: activityItems });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (opts?.quiet && lastBalance.current) {
-          setBalance({ loading: false, data: lastBalance.current, error: undefined });
-          setActivity({ loading: false, items: lastActivity.current, error: undefined });
-        } else if (lastBalance.current) {
-          setBalance({ loading: false, data: lastBalance.current, error: message });
-          setActivity({ loading: false, items: lastActivity.current, error: undefined });
-        } else {
-          setBalance({ loading: false, error: message });
-          setActivity({ loading: false, items: [], error: message });
-        }
-      }
+  const overview = useRpcQuery<{ balance: AddressBalance; txids: any[] }>(
+    ["address-overview", addressKey],
+    () =>
+      Promise.all([
+        client.getAddressBalance(addresses),
+        client.getAddressTxids(addresses, true),
+      ]).then(([balanceResult, txids]) => ({
+        balance: balanceResult,
+        txids: Array.isArray(txids) ? txids : [],
+      })),
+    {
+      enabled: addresses.length > 0,
+      staleTime: 20_000,
+      refetchIntervalMs: 20_000,
+      keepPreviousData: true,
     },
-    [addresses, buildActivity, client],
   );
 
-  const checkHeight = useCallback(async () => {
-    if (!addresses.length) return;
-    try {
-      const info = await client.getBlockchainInfo();
-      if (typeof info.blocks === "number" && info.blocks !== lastHeight.current) {
-        lastHeight.current = info.blocks;
-        await load({ quiet: true });
-      }
-    } catch {
-      // ignore height polling errors
-    }
-  }, [addresses.length, client, load]);
+  const txPreview = useMemo(() => (overview.data?.txids ?? []).slice(0, 5), [overview.data?.txids]);
 
-  useEffect(() => {
-    lastHeight.current = null;
-    void load();
-    const onVis = () => {
-      if (!document.hidden) {
-        void load();
-      }
-    };
-    const interval = setInterval(() => {
-      void checkHeight();
-    }, 20_000);
-    document.addEventListener("visibilitychange", onVis);
-    return () => {
-      document.removeEventListener("visibilitychange", onVis);
-      clearInterval(interval);
-    };
-  }, [load, checkHeight]);
+  const activityQuery = useRpcQuery<ActivityItem[]>(
+    ["activity", addressKey, txPreview],
+    () => buildActivity(txPreview),
+    {
+      enabled: addresses.length > 0 && txPreview.length > 0,
+      staleTime: 20_000,
+      keepPreviousData: true,
+    },
+  );
 
   const maturedLiners =
-    balance.data?.matured_liners ?? (typeof balance.data?.balance_liners === "number" ? balance.data.balance_liners : 0);
+    overview.data?.balance?.matured_liners ??
+    (typeof overview.data?.balance?.balance_liners === "number" ? overview.data.balance.balance_liners : 0);
   const immatureLiners =
-    balance.data?.immature_liners ??
-    Math.max(0, (typeof balance.data?.balance_liners === "number" ? balance.data.balance_liners : 0) - maturedLiners);
-  const total = balance.data ? fromLiners(balance.data.balance_liners) : 0;
+    overview.data?.balance?.immature_liners ??
+    Math.max(
+      0,
+      (typeof overview.data?.balance?.balance_liners === "number" ? overview.data.balance.balance_liners : 0) -
+        maturedLiners,
+    );
+  const total = overview.data?.balance ? fromLiners(overview.data.balance.balance_liners) : 0;
   const matured = fromLiners(maturedLiners);
   const immature = fromLiners(immatureLiners);
 
@@ -207,7 +161,13 @@ export function HomeScreen() {
 
   const copyAddress = async (addr: string) => {
     await navigator.clipboard.writeText(addr);
-  }
+  };
+
+  const balanceLoading = overview.loading && !overview.data?.balance;
+  const balanceError = overview.error ? overview.error.message : undefined;
+  const activityItems = activityQuery.data ?? [];
+  const activityLoading = activityQuery.loading && activityItems.length === 0;
+  const activityError = activityQuery.error ? activityQuery.error.message : undefined;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 content-start">
@@ -215,7 +175,7 @@ export function HomeScreen() {
       <Card className="lg:col-span-12 relative overflow-hidden group">
         <div className="absolute top-0 right-0 p-32 bg-accent/5 rounded-full blur-3xl group-hover:bg-accent/10 transition-colors" />
 
-        {balance.loading && !balance.data ? (
+        {balanceLoading ? (
           <div className="animate-pulse space-y-4">
             <div className="h-4 bg-white/10 w-24 rounded" />
             <div className="h-10 bg-white/10 w-48 rounded" />
@@ -242,7 +202,7 @@ export function HomeScreen() {
               </div>
             </div>
 
-            {balance.error && <p className="text-danger text-sm mt-4 font-medium">{balance.error}</p>}
+            {balanceError && <p className="text-danger text-sm mt-4 font-medium">{balanceError}</p>}
           </div>
         )}
       </Card>
@@ -255,18 +215,18 @@ export function HomeScreen() {
         </h3>
 
         <div className="flex-1 space-y-3">
-          {activity.loading && !activity.items.length ? (
+          {activityLoading && !activityItems.length ? (
             [1, 2, 3].map((i) => (
               <div key={i} className="h-16 rounded-xl bg-white/5 animate-pulse" />
             ))
-          ) : !activity.loading && activity.items.length === 0 ? (
+          ) : !activityLoading && activityItems.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-muted gap-2 py-12">
               <Globe size={48} weight="thin" className="opacity-50" />
               <p>No transactions found</p>
             </div>
           ) : (
             <AnimatePresence initial={false}>
-              {activity.items.map((tx) => {
+              {activityItems.map((tx) => {
                 const isIncoming = tx.netLiners > 0;
                 const isOutgoing = tx.netLiners < 0;
                 const amount = fromLiners(Math.abs(tx.netLiners)).toFixed(8);
@@ -310,7 +270,7 @@ export function HomeScreen() {
               })}
             </AnimatePresence>
           )}
-          {activity.error && <p className="text-danger text-sm">{activity.error}</p>}
+          {activityError && <p className="text-danger text-sm">{activityError}</p>}
         </div>
       </Card>
 
