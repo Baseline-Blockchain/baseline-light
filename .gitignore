@@ -3,7 +3,9 @@ node_modules
 dist
 .vite
 src-tauri/target
-src-tauri/gen
+# Keep Android gen project tracked; ignore only build outputs within it
+src-tauri/gen/android/app/build
+src-tauri/gen/android/.gradle
 *.log
 tmp/
 temp/

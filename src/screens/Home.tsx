@@ -191,7 +191,7 @@ export function HomeScreen() {
               <span className="text-lg font-bold text-muted">BLINE</span>
             </div>
 
-            <div className="flex gap-6 text-sm">
+            <div className="flex gap-6 text-sm flex-wrap">
               <div className="flex flex-col">
                 <span className="text-muted text-xs uppercase tracking-wider font-semibold">Immature</span>
                 <span className="font-mono text-white/70">{immature.toFixed(8)}</span>

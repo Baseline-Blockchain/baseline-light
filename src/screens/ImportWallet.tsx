@@ -69,11 +69,11 @@ export function ImportWalletScreen() {
 
   return (
     <AuthLayout hero={Hero}>
-      <div className="flex bg-bg/50 p-1 rounded-xl mb-4 border border-white/5">
+      <div className="flex bg-bg/50 p-1 rounded-xl mb-4 border border-white/5 flex-wrap gap-1">
         <button
           onClick={() => setMode("mnemonic")}
           className={cn(
-            "flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-lg transition-all",
+            "flex-1 min-w-[140px] flex items-center justify-center gap-2 py-2 px-2 text-sm font-medium rounded-lg transition-all",
             mode === "mnemonic" ? "bg-accent/10 text-accent shadow-sm" : "text-muted hover:text-text hover:bg-white/5"
           )}
         >
@@ -82,7 +82,7 @@ export function ImportWalletScreen() {
         <button
           onClick={() => setMode("wif")}
           className={cn(
-            "flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-lg transition-all",
+            "flex-1 min-w-[140px] flex items-center justify-center gap-2 py-2 px-2 text-sm font-medium rounded-lg transition-all",
             mode === "wif" ? "bg-accent/10 text-accent shadow-sm" : "text-muted hover:text-text hover:bg-white/5"
           )}
         >
@@ -91,7 +91,7 @@ export function ImportWalletScreen() {
         <button
           onClick={() => setMode("walletjson")}
           className={cn(
-            "flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-lg transition-all",
+            "flex-1 min-w-[140px] flex items-center justify-center gap-2 py-2 px-2 text-sm font-medium rounded-lg transition-all",
             mode === "walletjson" ? "bg-accent/10 text-accent shadow-sm" : "text-muted hover:text-text hover:bg-white/5"
           )}
         >

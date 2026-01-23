@@ -399,14 +399,14 @@ export function SendScreen() {
   }, [client, lastSend, pendingMempool]);
 
   return (
-    <div className="grid lg:grid-cols-2 gap-6 h-full content-start">
+    <div className="grid lg:grid-cols-2 gap-6 h-full content-start max-w-full overflow-x-auto">
 
 
-      <Card className="lg:col-span-2">
+      <Card className="lg:col-span-2 w-full">
         <h3 className="text-xl font-bold mb-6 flex items-center gap-2">Send Funds</h3>
 
-        <form onSubmit={onSubmit} className="grid md:grid-cols-2 gap-6">
-          <div className="col-span-2 md:col-span-2 flex flex-col gap-6">
+        <form onSubmit={onSubmit} className="grid gap-6 min-w-0 w-full md:grid-cols-2 md:items-start">
+          <div className="col-span-2 flex flex-col gap-6 min-w-0">
             <Input
               label="Destination Address"
               placeholder="Baseline Cash Address"
@@ -424,7 +424,7 @@ export function SendScreen() {
             />
           </div>
 
-          <div>
+          <div className="min-w-0 md:col-span-1 col-span-2">
             <Select
               label="Spend From"
               value={fromAddress}
@@ -443,7 +443,7 @@ export function SendScreen() {
             {addressStatsError && !addressStatsLoading && <div className="text-xs text-danger mt-2">{addressStatsError}</div>}
           </div>
 
-          <div>
+          <div className="min-w-0 md:col-span-1 col-span-2">
             <Select
               label="Change Address"
               value={changeAddress}
@@ -456,12 +456,12 @@ export function SendScreen() {
           </div>
 
           <div className="col-span-2 border-t border-white/5 pt-6">
-            <div className="flex justify-between items-end mb-4">
+            <div className="flex justify-between items-end mb-4 flex-wrap gap-2">
               <label className="text-xs font-bold uppercase tracking-wider text-muted block">Transaction Fee Prioirty</label>
               <div className="text-xs text-accent font-mono">{baseRateText}</div>
             </div>
 
-            <div className="bg-panel-strong/30 rounded-xl p-1 mb-4">
+            <div className="bg-panel-strong/30 rounded-xl p-1 mb-4 min-w-0 w-full">
               <div className="grid grid-cols-2 gap-1 mb-2">
                 <button
                   type="button"
@@ -476,11 +476,11 @@ export function SendScreen() {
               </div>
 
               {feeMode === "auto" ? (
-                <div className="grid grid-cols-3 gap-2">
-                  {FEE_PRESETS.map((p) => {
-                    const base = baseEstimatedFeeRate ?? fallbackFeeRate;
-                    const val = Math.max(MIN_RELAY_FEE_RATE_LINERS_PER_KB, Math.round(base * p.multiplier));
-                    const ratePerVb = val / 1000;
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 min-w-0">
+              {FEE_PRESETS.map((p) => {
+                const base = baseEstimatedFeeRate ?? fallbackFeeRate;
+                const val = Math.max(MIN_RELAY_FEE_RATE_LINERS_PER_KB, Math.round(base * p.multiplier));
+                const ratePerVb = val / 1000;
 
                     return (
                       <button
@@ -488,7 +488,7 @@ export function SendScreen() {
                         type="button"
                         onClick={() => { setFeePresetKey(p.key); resetPending(); }}
                         className={cn(
-                          "flex flex-col items-center justify-center p-2 rounded-lg border transition-all h-20",
+                          "flex flex-col items-center justify-center p-2 rounded-lg border transition-all h-20 w-full min-w-0 text-center",
                           feePresetKey === p.key ? "bg-accent/10 border-accent/40 text-accent shadow-sm" : "bg-panel border-transparent hover:bg-white/5 text-muted"
                         )}
                       >

@@ -22,7 +22,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
       <aside className="hidden md:flex w-72 flex-col border-r border-white/5 bg-panel/30 backdrop-blur-xl p-6">
         <div className="flex items-center gap-4 mb-10">
           <div className="relative h-12 w-12 flex items-center justify-center rounded-xl bg-gradient-to-br from-panel-strong to-black border border-white/10 shadow-lg shadow-accent/10">
-            <img src="/logo.png" alt="Logo" className="h-8 w-8 object-contain" />
+            <img src="/icon.png" alt="Logo" className="h-8 w-8 object-contain" />
             <div className="absolute inset-0 rounded-xl bg-accent/5" />
           </div>
           <div>
@@ -75,7 +75,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 relative overflow-hidden flex flex-col">
+      <main className="flex-1 relative overflow-hidden flex flex-col safe-area-top">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-accent/10 via-bg to-bg pointer-events-none" />
         <div className="flex-1 overflow-y-auto p-6 md:p-10 relative z-10">
           <div className="max-w-5xl mx-auto flex flex-col">
