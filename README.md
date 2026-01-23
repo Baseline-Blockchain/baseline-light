@@ -1,4 +1,4 @@
-# Baseline Light Wallet
+# Baseline Cash Light Wallet
 
 Light wallet that only hits public APIs on a Baseline node. Keys live locally; signing happens client-side with Bitcoin-style P2PKH and Baseline address prefixes.
 
