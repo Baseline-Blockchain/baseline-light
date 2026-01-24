@@ -13,6 +13,14 @@ val tauriProperties = Properties().apply {
     }
 }
 
+val keystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
+val keystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+val keystoreAlias = System.getenv("ANDROID_KEY_ALIAS")
+val keystoreKeyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+val hasSigning = !keystorePath.isNullOrBlank()
+    && !keystorePassword.isNullOrBlank()
+    && !keystoreAlias.isNullOrBlank()
+
 android {
     compileSdk = 36
     namespace = "com.baseline.light"
@@ -23,6 +31,20 @@ android {
         targetSdk = 36
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
+    }
+    if (hasSigning) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword = keystorePassword
+                keyAlias = keystoreAlias
+                keyPassword = if (!keystoreKeyPassword.isNullOrBlank()) {
+                    keystoreKeyPassword
+                } else {
+                    keystorePassword
+                }
+            }
+        }
     }
     buildTypes {
         getByName("debug") {
@@ -38,11 +60,23 @@ android {
         }
         getByName("release") {
             isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 *fileTree(".") { include("**/*.pro") }
                     .plus(getDefaultProguardFile("proguard-android-optimize.txt"))
                     .toList().toTypedArray()
             )
+            if (hasSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
+    }
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a")
+            isUniversalApk = false
         }
     }
     kotlinOptions {

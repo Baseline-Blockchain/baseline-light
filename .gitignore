@@ -10,6 +10,9 @@ src-tauri/gen/android/.gradle
 tmp/
 temp/
 *.local
+*.jks
+*.keystore
+*.jks.base64
 .idea/
 .vscode/
 coverage/
