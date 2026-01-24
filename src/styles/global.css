@@ -4,8 +4,12 @@
 
 @layer base {
   :root {
-    --safe-top: env(safe-area-inset-top, 0px);
-    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-top-env: env(safe-area-inset-top, 0px);
+    --safe-bottom-env: env(safe-area-inset-bottom, 0px);
+    --safe-top-js: 0px;
+    --safe-bottom-js: 0px;
+    --safe-top: max(var(--safe-top-env), var(--safe-top-js));
+    --safe-bottom: max(var(--safe-bottom-env), var(--safe-bottom-js));
   }
 
   html, body {
@@ -37,7 +41,7 @@
 }
 
 .safe-area-bottom {
-  padding-bottom: max(8px, var(--safe-bottom));
+  padding-bottom: calc(8px + var(--safe-bottom));
 }
 
 /* Custom scrollbar to match the theme */
